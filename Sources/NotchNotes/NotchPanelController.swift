@@ -109,6 +109,7 @@ final class NotchPanelController: NSObject {
         if let range = editorInteractionState.currentSelectionRange() {
             store.updateSelection(for: store.activeTabID, range: range)
         }
+        settingsPopoverController.close(animated: false)
         isExpanded = false
         setDrawerExpanded(false, animated: animated)
         let delay: TimeInterval = animated ? 0.18 : 0

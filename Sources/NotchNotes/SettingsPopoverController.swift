@@ -11,7 +11,9 @@ final class SettingsPopoverPanel: NSPanel {
 final class SettingsPopoverController: NSObject, NSWindowDelegate {
     private let settingsStore: AppSettingsStore
     private var panel: SettingsPopoverPanel?
-    private var outsideClickMonitor: Any?
+    private var localOutsideClickMonitor: Any?
+    private var globalOutsideClickMonitor: Any?
+    private var suppressShowUntil: Date?
     private let contentSize = NSSize(width: 238, height: 126)
 
     init(settingsStore: AppSettingsStore) {
@@ -20,6 +22,11 @@ final class SettingsPopoverController: NSObject, NSWindowDelegate {
     }
 
     func show(relativeTo parentWindow: NSWindow?) {
+        if let suppressShowUntil, Date() < suppressShowUntil {
+            return
+        }
+        suppressShowUntil = nil
+
         if let panel {
             close(panel, animated: true)
             return
@@ -70,6 +77,11 @@ final class SettingsPopoverController: NSObject, NSWindowDelegate {
         close(panel, animated: true)
     }
 
+    func close(animated: Bool) {
+        guard let panel else { return }
+        close(panel, animated: animated)
+    }
+
     func contains(_ point: NSPoint) -> Bool {
         panel?.frame.insetBy(dx: -4, dy: -4).contains(point) ?? false
     }
@@ -79,8 +91,20 @@ final class SettingsPopoverController: NSObject, NSWindowDelegate {
         panel = nil
     }
 
-    private func close(_ panel: SettingsPopoverPanel, animated: Bool) {
+    func windowDidResignKey(_ notification: Notification) {
+        close(animated: true, suppressImmediateReopen: true)
+    }
+
+    private func close(animated: Bool, suppressImmediateReopen: Bool) {
+        guard let panel else { return }
+        close(panel, animated: animated, suppressImmediateReopen: suppressImmediateReopen)
+    }
+
+    private func close(_ panel: SettingsPopoverPanel, animated: Bool, suppressImmediateReopen: Bool = false) {
         removeOutsideClickMonitor()
+        if suppressImmediateReopen {
+            suppressShowUntil = Date(timeIntervalSinceNow: 0.25)
+        }
         let finalOrigin = NSPoint(x: panel.frame.minX, y: panel.frame.minY + 8)
 
         guard animated else {
@@ -129,20 +153,31 @@ final class SettingsPopoverController: NSObject, NSWindowDelegate {
 
     private func installOutsideClickMonitor() {
         removeOutsideClickMonitor()
-        outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+        localOutsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self else { return event }
             guard let panel = self.panel else { return event }
             if event.window !== panel, !self.contains(NSEvent.mouseLocation) {
-                self.close(panel, animated: true)
+                self.close(panel, animated: true, suppressImmediateReopen: true)
             }
             return event
+        }
+
+        globalOutsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in
+                self?.close(animated: true, suppressImmediateReopen: true)
+            }
         }
     }
 
     private func removeOutsideClickMonitor() {
-        if let outsideClickMonitor {
-            NSEvent.removeMonitor(outsideClickMonitor)
-            self.outsideClickMonitor = nil
+        if let localOutsideClickMonitor {
+            NSEvent.removeMonitor(localOutsideClickMonitor)
+            self.localOutsideClickMonitor = nil
+        }
+
+        if let globalOutsideClickMonitor {
+            NSEvent.removeMonitor(globalOutsideClickMonitor)
+            self.globalOutsideClickMonitor = nil
         }
     }
 }
@@ -192,10 +227,6 @@ struct SettingsPopoverView: View {
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(red: 0.045, green: 0.045, blue: 0.052).opacity(0.98))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.white.opacity(0.075), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 14)
         .scaleEffect(appeared ? 1 : 0.965, anchor: .topTrailing)
