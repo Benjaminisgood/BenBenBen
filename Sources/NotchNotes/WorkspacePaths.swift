@@ -9,6 +9,7 @@ enum WorkspacePaths {
     static let markdownRoot = root.appendingPathComponent("mds", isDirectory: true)
     static let markdownAttachments = markdownRoot.appendingPathComponent("attachments", isDirectory: true)
     static let pythonRoot = root.appendingPathComponent("pys", isDirectory: true)
+    static let pythonOutputFile = pythonRoot.appendingPathComponent("transcript.log", isDirectory: false)
     static let shellRoot = root.appendingPathComponent("shs", isDirectory: true)
     static let shellWorkspaceRoot = shellRoot.appendingPathComponent("workspaces", isDirectory: true)
     static let shellWorkspaceInputRoot = shellRoot.appendingPathComponent("workspace-inputs", isDirectory: true)

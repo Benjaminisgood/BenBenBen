@@ -4,7 +4,7 @@ import Foundation
 @MainActor
 final class PythonReplRunner: ObservableObject, @unchecked Sendable {
     @Published var input = ""
-    @Published private(set) var output = ""
+    @Published private(set) var output: String
     @Published private(set) var isRunning = false
     @Published private(set) var prompt = ">>>"
 
@@ -78,6 +78,7 @@ final class PythonReplRunner: ObservableObject, @unchecked Sendable {
     """
 
     private var workingDirectory: URL
+    private let outputPersistenceURL: URL?
     private var process: Process?
     private var inputPipe: Pipe?
     private var outputPipe: Pipe?
@@ -86,8 +87,12 @@ final class PythonReplRunner: ObservableObject, @unchecked Sendable {
     private var needsMoreInput = false
     private var isStopping = false
 
-    init(workingDirectory: URL) {
+    init(workingDirectory: URL, outputPersistenceURL: URL? = nil) {
         self.workingDirectory = workingDirectory
+        self.outputPersistenceURL = outputPersistenceURL
+        let persistedOutput = Self.loadText(from: outputPersistenceURL) ?? ""
+        self.output = String(persistedOutput.suffix(Self.outputLimit))
+        persistOutput()
     }
 
     func run(configuration: PythonLaunchConfiguration) {
@@ -119,6 +124,7 @@ final class PythonReplRunner: ObservableObject, @unchecked Sendable {
 
     func clear() {
         output = ""
+        persistOutput()
     }
 
     func useWorkingDirectory(_ url: URL) {
@@ -272,6 +278,25 @@ final class PythonReplRunner: ObservableObject, @unchecked Sendable {
         if output.count > Self.outputLimit {
             output = String(output.suffix(Self.outputLimit))
         }
+        persistOutput()
+    }
+
+    private func persistOutput() {
+        guard let outputPersistenceURL else { return }
+        Self.writeText(output, to: outputPersistenceURL)
+    }
+
+    private nonisolated static func loadText(from url: URL?) -> String? {
+        guard let url else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    private nonisolated static func writeText(_ text: String, to url: URL) {
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? text.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private nonisolated static func pythonStringLiteral(_ value: String) -> String {

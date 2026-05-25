@@ -61,7 +61,10 @@ final class NotchPanelController: NSObject {
         outputPersistenceURL: shellWorkspaceStore.activeWorkspace.transcriptURL,
         showsCommandTimestamps: true
     )
-    private let pythonRunner = PythonReplRunner(workingDirectory: WorkspacePaths.pythonRoot)
+    private let pythonRunner = PythonReplRunner(
+        workingDirectory: WorkspacePaths.pythonRoot,
+        outputPersistenceURL: WorkspacePaths.pythonOutputFile
+    )
     private lazy var settingsPopoverController = SettingsPopoverController(
         settingsStore: settingsStore,
         directoryStore: directoryStore
