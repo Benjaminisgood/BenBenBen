@@ -25,6 +25,7 @@ final class CodeFileStore: ObservableObject {
     private let rootURL: URL
     private let fileExtension: String
     private let defaultTemplate: String
+    private let defaultStem = "scratch"
     private var syncTimer: Timer?
     private var isWritingToDisk = false
 
@@ -34,16 +35,12 @@ final class CodeFileStore: ObservableObject {
         self.defaultTemplate = defaultTemplate
         try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
 
-        var loadedFiles = Self.loadFiles(from: rootURL, fileExtension: fileExtension)
-        if loadedFiles.isEmpty {
-            loadedFiles = [Self.persistNewFile(
-                text: defaultTemplate,
-                rootURL: rootURL,
-                fileExtension: fileExtension,
-                stem: "scratch"
-            )]
-        }
-
+        let loadedFiles = Self.availableFiles(
+            from: rootURL,
+            fileExtension: fileExtension,
+            defaultTemplate: defaultTemplate,
+            defaultStem: defaultStem
+        )
         files = loadedFiles
         activeFileID = loadedFiles[0].id
         startDiskSync()
@@ -76,7 +73,7 @@ final class CodeFileStore: ObservableObject {
             text: defaultTemplate,
             rootURL: rootURL,
             fileExtension: fileExtension,
-            stem: "scratch"
+            stem: defaultStem
         )
         files.append(file)
         activeFileID = file.id
@@ -90,10 +87,16 @@ final class CodeFileStore: ObservableObject {
 
     func syncFromDisk() {
         guard !isWritingToDisk else { return }
-        let diskFiles = Self.loadFiles(from: rootURL, fileExtension: fileExtension)
-        guard !diskFiles.isEmpty else { return }
+        let activePath = files.first { $0.id == activeFileID }?.filePath
+        let diskFiles = Self.availableFiles(
+            from: rootURL,
+            fileExtension: fileExtension,
+            defaultTemplate: defaultTemplate,
+            defaultStem: defaultStem
+        )
 
-        let existingByPath = Dictionary(uniqueKeysWithValues: files.map { ($0.filePath, $0) })
+        var existingByPath: [String: CodeFile] = [:]
+        files.forEach { existingByPath[$0.filePath] = $0 }
         let mergedFiles = diskFiles.map { diskFile -> CodeFile in
             guard var existing = existingByPath[diskFile.filePath] else {
                 return diskFile
@@ -106,9 +109,10 @@ final class CodeFileStore: ObservableObject {
 
         guard mergedFiles != files else { return }
 
-        let activePath = activeFile.filePath
         files = mergedFiles
-        activeFileID = mergedFiles.first(where: { $0.filePath == activePath })?.id ?? mergedFiles[0].id
+        activeFileID = activePath.flatMap { path in
+            mergedFiles.first(where: { $0.filePath == path })?.id
+        } ?? mergedFiles[0].id
     }
 
     private var activeIndex: Int {
@@ -161,6 +165,23 @@ final class CodeFileStore: ObservableObject {
             }
     }
 
+    private static func availableFiles(
+        from rootURL: URL,
+        fileExtension: String,
+        defaultTemplate: String,
+        defaultStem: String
+    ) -> [CodeFile] {
+        let loadedFiles = loadFiles(from: rootURL, fileExtension: fileExtension)
+        guard loadedFiles.isEmpty else { return loadedFiles }
+
+        return [persistNewFile(
+            text: defaultTemplate,
+            rootURL: rootURL,
+            fileExtension: fileExtension,
+            stem: defaultStem
+        )]
+    }
+
     private static func persistNewFile(
         text: String,
         rootURL: URL,
@@ -176,4 +197,3 @@ final class CodeFileStore: ObservableObject {
         return CodeFile(text: text, filePath: url.path, createdAt: Date())
     }
 }
-

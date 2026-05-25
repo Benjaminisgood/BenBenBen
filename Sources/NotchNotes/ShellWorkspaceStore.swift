@@ -26,12 +26,7 @@ final class ShellWorkspaceStore: ObservableObject {
     init() {
         WorkspacePaths.ensureDirectories()
         Self.migrateLegacyTranscriptIfNeeded()
-        var loadedWorkspaces = Self.loadWorkspaces()
-
-        if loadedWorkspaces.isEmpty {
-            let workspace = Self.createWorkspace(stem: "shell")
-            loadedWorkspaces = [workspace]
-        }
+        let loadedWorkspaces = Self.availableWorkspaces()
 
         let savedID = UserDefaults.standard.string(forKey: Self.activeWorkspaceKey)
         let activeID = savedID.flatMap { saved in
@@ -78,8 +73,7 @@ final class ShellWorkspaceStore: ObservableObject {
     }
 
     func syncFromDisk() {
-        let loaded = Self.loadWorkspaces()
-        guard !loaded.isEmpty else { return }
+        let loaded = Self.availableWorkspaces()
         workspaces = loaded
         if !workspaces.contains(where: { $0.id == activeWorkspaceID }) {
             activeWorkspaceID = workspaces[0].id
@@ -118,6 +112,13 @@ final class ShellWorkspaceStore: ObservableObject {
                 }
                 return $0.title.localizedStandardCompare($1.title) == .orderedAscending
             }
+    }
+
+    private nonisolated static func availableWorkspaces() -> [ShellWorkspace] {
+        let loadedWorkspaces = loadWorkspaces()
+        guard loadedWorkspaces.isEmpty else { return loadedWorkspaces }
+
+        return [createWorkspace(stem: "shell")]
     }
 
     private nonisolated static func createWorkspace(stem: String) -> ShellWorkspace {

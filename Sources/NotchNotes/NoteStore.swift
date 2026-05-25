@@ -61,13 +61,9 @@ final class NoteStore: ObservableObject {
         WorkspacePaths.ensureDirectories()
         self.markdownRoot = markdownRoot.standardizedFileURL
 
-        var initialTabs = Self.loadMarkdownTabs(from: self.markdownRoot)
-        if initialTabs.isEmpty {
-            let legacyText = UserDefaults.standard.string(forKey: Self.legacyTextKey)
-            let seededText = legacyText?.isEmpty == false ? legacyText! : "# Untitled\n\n"
-            let tab = NoteTab(text: seededText)
-            initialTabs = [Self.persistNewTab(tab, in: self.markdownRoot)]
-        }
+        let legacyText = UserDefaults.standard.string(forKey: Self.legacyTextKey)
+        let seededText = legacyText?.isEmpty == false ? legacyText! : "# Untitled\n\n"
+        let initialTabs = Self.availableMarkdownTabs(from: self.markdownRoot, seedText: seededText)
 
         tabs = initialTabs
 
@@ -167,20 +163,17 @@ final class NoteStore: ObservableObject {
 
     func syncFromDisk() {
         guard !isWritingToDisk else { return }
-        let diskTabs = Self.loadMarkdownTabs(from: markdownRoot)
+        let activePath = tabs.first { $0.id == activeTabID }?.filePath
+        let diskTabs = Self.availableMarkdownTabs(from: markdownRoot, seedText: "# Untitled\n\n")
 
-        if diskTabs.isEmpty {
-            let tab = Self.persistNewTab(NoteTab(text: "# Untitled\n\n"), in: markdownRoot)
-            tabs = [tab]
-            activeTabID = tab.id
-            save()
-            return
-        }
-
-        let existingByPath = Dictionary(uniqueKeysWithValues: tabs.compactMap { tab -> (String, NoteTab)? in
+        var existingByPath: [String: NoteTab] = [:]
+        tabs.compactMap { tab -> (String, NoteTab)? in
             guard let filePath = tab.filePath else { return nil }
             return (filePath, tab)
-        })
+        }
+        .forEach { filePath, tab in
+            existingByPath[filePath] = tab
+        }
 
         let mergedTabs = diskTabs.map { diskTab -> NoteTab in
             guard var existing = diskTab.filePath.flatMap({ existingByPath[$0] }) else {
@@ -194,7 +187,6 @@ final class NoteStore: ObservableObject {
 
         guard mergedTabs != tabs else { return }
 
-        let activePath = activeTab.filePath
         tabs = mergedTabs
         if let activePath,
            let activeID = mergedTabs.first(where: { $0.filePath == activePath })?.id {
@@ -210,18 +202,15 @@ final class NoteStore: ObservableObject {
     }
 
     private func reloadFromMarkdownRoot(seedLegacyText: Bool) {
-        var loadedTabs = Self.loadMarkdownTabs(from: markdownRoot)
-        if loadedTabs.isEmpty {
-            let seededText: String
-            if seedLegacyText,
-               let legacyText = UserDefaults.standard.string(forKey: Self.legacyTextKey),
-               !legacyText.isEmpty {
-                seededText = legacyText
-            } else {
-                seededText = "# Untitled\n\n"
-            }
-            loadedTabs = [Self.persistNewTab(NoteTab(text: seededText), in: markdownRoot)]
+        let seededText: String
+        if seedLegacyText,
+           let legacyText = UserDefaults.standard.string(forKey: Self.legacyTextKey),
+           !legacyText.isEmpty {
+            seededText = legacyText
+        } else {
+            seededText = "# Untitled\n\n"
         }
+        let loadedTabs = Self.availableMarkdownTabs(from: markdownRoot, seedText: seededText)
 
         tabs = loadedTabs
         let activePath = UserDefaults.standard.string(forKey: Self.activeFilePathKey)
@@ -290,6 +279,7 @@ final class NoteStore: ObservableObject {
     }
 
     private func save() {
+        guard !tabs.isEmpty else { return }
         if let activePath = activeTab.filePath {
             UserDefaults.standard.set(activePath, forKey: Self.activeFilePathKey)
         }
@@ -342,6 +332,13 @@ final class NoteStore: ObservableObject {
         return loadedTabs.sorted {
             $0.fileName.localizedStandardCompare($1.fileName) == .orderedAscending
         }
+    }
+
+    private static func availableMarkdownTabs(from root: URL, seedText: String) -> [NoteTab] {
+        let loadedTabs = loadMarkdownTabs(from: root)
+        guard loadedTabs.isEmpty else { return loadedTabs }
+
+        return [persistNewTab(NoteTab(text: seedText), in: root)]
     }
 
     private static func persistNewTab(_ tab: NoteTab, in root: URL) -> NoteTab {
