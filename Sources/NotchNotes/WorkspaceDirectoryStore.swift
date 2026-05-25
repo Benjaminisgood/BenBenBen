@@ -56,12 +56,58 @@ final class WorkspaceDirectoryStore: ObservableObject {
         NSWorkspace.shared.open(markdownWorkingDirectoryURL)
     }
 
+    func openMarkdownWorkingDirectoryInVSCode() {
+        openInVSCode(markdownWorkingDirectoryURL)
+    }
+
     func openShellWorkingDirectory() {
         NSWorkspace.shared.open(shellWorkingDirectoryURL)
     }
 
+    func openShellWorkingDirectoryInVSCode() {
+        openInVSCode(shellWorkingDirectoryURL)
+    }
+
     func openPythonProjectDirectory() {
         NSWorkspace.shared.open(pythonProjectDirectoryURL)
+    }
+
+    func openPythonProjectDirectoryInVSCode() {
+        openInVSCode(pythonProjectDirectoryURL)
+    }
+
+    private func openInVSCode(_ directoryURL: URL) {
+        if let applicationURL = Self.visualStudioCodeApplicationURL() {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.open(
+                [directoryURL],
+                withApplicationAt: applicationURL,
+                configuration: configuration
+            )
+            return
+        }
+
+        if let url = Self.visualStudioCodeFileURL(for: directoryURL) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private static func visualStudioCodeApplicationURL() -> URL? {
+        [
+            "com.microsoft.VSCode",
+            "com.microsoft.VSCodeInsiders"
+        ].compactMap { bundleIdentifier in
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+        }.first
+    }
+
+    private static func visualStudioCodeFileURL(for directoryURL: URL) -> URL? {
+        var components = URLComponents()
+        components.scheme = "vscode"
+        components.host = "file"
+        components.path = directoryURL.standardizedFileURL.path
+        return components.url
     }
 
     private func persistMarkdownWorkingDirectory() {

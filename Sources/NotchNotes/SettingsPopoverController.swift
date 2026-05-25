@@ -239,19 +239,22 @@ struct SettingsPopoverView: View {
                 DirectorySettingRow(
                     title: "md cwd",
                     path: $directoryStore.markdownWorkingDirectory,
-                    openAction: directoryStore.openMarkdownWorkingDirectory
+                    openAction: directoryStore.openMarkdownWorkingDirectory,
+                    openInVSCodeAction: directoryStore.openMarkdownWorkingDirectoryInVSCode
                 )
 
                 DirectorySettingRow(
                     title: "sh cwd",
                     path: $directoryStore.shellWorkingDirectory,
-                    openAction: directoryStore.openShellWorkingDirectory
+                    openAction: directoryStore.openShellWorkingDirectory,
+                    openInVSCodeAction: directoryStore.openShellWorkingDirectoryInVSCode
                 )
 
                 DirectorySettingRow(
                     title: "py cwd",
                     path: $directoryStore.pythonProjectDirectory,
-                    openAction: directoryStore.openPythonProjectDirectory
+                    openAction: directoryStore.openPythonProjectDirectory,
+                    openInVSCodeAction: directoryStore.openPythonProjectDirectoryInVSCode
                 )
             }
 
@@ -329,6 +332,7 @@ struct DirectorySettingRow: View {
     let title: String
     @Binding var path: String
     let openAction: () -> Void
+    let openInVSCodeAction: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -355,6 +359,13 @@ struct DirectorySettingRow: View {
             }
             .buttonStyle(MarkdownToolbarButtonStyle())
             .help("Open directory")
+
+            Button(action: openInVSCodeAction) {
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .help("Open in VS Code")
         }
     }
 }
