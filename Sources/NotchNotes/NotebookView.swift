@@ -2506,6 +2506,7 @@ struct MarkdownNoteEditor: View {
             headingMarker: NSColor(white: 0.44, alpha: 1),
             link: NSColor.systemBlue,
             incompleteLink: NSColor.systemBlue.withAlphaComponent(0.75),
+            highlightBackground: NSColor.systemYellow.withAlphaComponent(0.32),
             findMatchHighlight: NSColor.systemYellow.withAlphaComponent(0.55),
             findCurrentMatchHighlight: NSColor.systemYellow,
             latexLightModeText: .white,

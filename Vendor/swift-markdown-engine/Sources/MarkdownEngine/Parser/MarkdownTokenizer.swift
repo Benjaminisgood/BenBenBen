@@ -20,6 +20,9 @@ private extension MarkdownTokenizer {
     static let markdownLinkRegex = try! NSRegularExpression(
         pattern: "\\[([^\\]\\r\\n]+)\\]\\(([^\\)\\r\\n]+)\\)"
     )
+    static let highlightRegex = try! NSRegularExpression(
+        pattern: #"(?<![=])==([^\r\n=](?:[^\r\n]*?[^\r\n=])?)==(?![=])"#
+    )
     static let headingRegex = try! NSRegularExpression(
         pattern: "^\\s*(#{1,6}) +(.*)$",
         options: [.anchorsMatchLines]
@@ -228,6 +231,28 @@ enum MarkdownTokenizer {
             }
         }
 
+        // Highlights ==content==
+        for match in highlightRegex.matches(in: text, options: [], range: fullRange) {
+            let full = match.range(at: 0)
+            let isInsideOpaqueToken = tokens.contains { token in
+                switch token.kind {
+                case .codeBlock, .inlineCode, .blockLatex, .inlineLatex:
+                    return range(token.range, contains: full)
+                default:
+                    return false
+                }
+            }
+            if isInsideOpaqueToken { continue }
+
+            let content = match.range(at: 1)
+            let openMarker = NSRange(location: full.location, length: 2)
+            let closeMarker = NSRange(location: full.location + full.length - 2, length: 2)
+            tokens.append(MarkdownToken(kind: .highlight,
+                                        range: full,
+                                        contentRange: content,
+                                        markerRanges: [openMarker, closeMarker]))
+        }
+
         return tokens
     }
 
@@ -279,5 +304,10 @@ enum MarkdownTokenizer {
         }
         
         return true
+    }
+
+    private static func range(_ outer: NSRange, contains inner: NSRange) -> Bool {
+        guard outer.location != NSNotFound, inner.location != NSNotFound else { return false }
+        return inner.location >= outer.location && NSMaxRange(inner) <= NSMaxRange(outer)
     }
 }

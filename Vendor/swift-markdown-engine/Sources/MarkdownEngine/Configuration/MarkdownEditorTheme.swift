@@ -46,6 +46,11 @@ public struct MarkdownEditorTheme: Sendable {
     /// Foreground color for incomplete `[text]` patterns (no URL yet).
     public var incompleteLink: NSColor
 
+    // MARK: Markdown highlights
+
+    /// Background color for `==highlighted text==` spans.
+    public var highlightBackground: NSColor
+
     // MARK: Find / search highlights
 
     /// Background color used to highlight all matches when the user is
@@ -83,6 +88,7 @@ public struct MarkdownEditorTheme: Sendable {
         headingMarker: NSColor = .gray,
         link: NSColor = .linkColor,
         incompleteLink: NSColor = .systemBlue,
+        highlightBackground: NSColor = NSColor.systemYellow.withAlphaComponent(0.35),
         findMatchHighlight: NSColor = .systemYellow,
         findCurrentMatchHighlight: NSColor = .systemYellow,
         latexLightModeText: NSColor = .black,
@@ -95,6 +101,7 @@ public struct MarkdownEditorTheme: Sendable {
         self.headingMarker = headingMarker
         self.link = link
         self.incompleteLink = incompleteLink
+        self.highlightBackground = highlightBackground
         self.findMatchHighlight = findMatchHighlight
         self.findCurrentMatchHighlight = findCurrentMatchHighlight
         self.latexLightModeText = latexLightModeText

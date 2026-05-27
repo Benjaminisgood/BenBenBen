@@ -4,7 +4,7 @@
 //
 //  Created by Luca Chen on 16.03.26.
 //
-//  Heading and emphasis (bold / italic / bold+italic) attribute generation.
+//  Heading, emphasis (bold / italic / bold+italic), and highlight attribute generation.
 //
 
 import AppKit
@@ -94,6 +94,27 @@ extension MarkdownStyler {
             }
             attrs.append((range, [.font: font]))
             i = j
+        }
+        return attrs
+    }
+
+    // MARK: Highlights
+
+    static func styleHighlights(_ ctx: StylingContext) -> [StyledRange] {
+        var attrs: [StyledRange] = []
+        for (idx, token) in ctx.tokens.enumerated() where token.kind == .highlight {
+            if MarkdownDetection.isInsideCodeBlock(range: token.range, codeTokens: ctx.codeTokens) { continue }
+
+            attrs.append((token.contentRange, [
+                .backgroundColor: ctx.configuration.theme.highlightBackground
+            ]))
+
+            let markerColor = ctx.activeTokenIndices.contains(idx)
+                ? ctx.configuration.theme.mutedText
+                : ctx.configuration.theme.mutedText.withAlphaComponent(0.75)
+            for markerRange in token.markerRanges {
+                attrs.append((markerRange, [.foregroundColor: markerColor]))
+            }
         }
         return attrs
     }
