@@ -49,6 +49,7 @@ final class ShellWorkspaceStore: ObservableObject {
         return workspaces.filter { workspace in
             workspace.title.localizedCaseInsensitiveContains(query)
                 || workspace.detail.localizedCaseInsensitiveContains(query)
+                || workspace.scriptURL.lastPathComponent.localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -97,13 +98,42 @@ final class ShellWorkspaceStore: ObservableObject {
         try? manager.createDirectory(at: WorkspacePaths.shellWorkspaceInputRoot, withIntermediateDirectories: true)
         try? manager.createDirectory(at: WorkspacePaths.shellWorkspaceScriptRoot, withIntermediateDirectories: true)
 
-        let urls = (try? manager.contentsOfDirectory(
+        let logURLs = (try? manager.contentsOfDirectory(
             at: WorkspacePaths.shellWorkspaceRoot,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )) ?? []
 
-        return urls
+        let logStems = Set(
+            logURLs
+                .filter { $0.pathExtension.lowercased() == "log" }
+                .map { $0.deletingPathExtension().lastPathComponent }
+        )
+
+        // Discover orphan .sh scripts that have no corresponding .log workspace
+        let scriptURLs = (try? manager.contentsOfDirectory(
+            at: WorkspacePaths.shellWorkspaceScriptRoot,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        for scriptURL in scriptURLs where scriptURL.pathExtension.lowercased() == "sh" {
+            let stem = scriptURL.deletingPathExtension().lastPathComponent
+            guard !logStems.contains(stem) else { continue }
+            let logURL = WorkspacePaths.shellWorkspaceRoot
+                .appendingPathComponent(stem, isDirectory: false)
+                .appendingPathExtension("log")
+            try? "".write(to: logURL, atomically: true, encoding: .utf8)
+        }
+
+        // Reload after creating any new log files
+        let allLogURLs = (try? manager.contentsOfDirectory(
+            at: WorkspacePaths.shellWorkspaceRoot,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        return allLogURLs
             .filter { $0.pathExtension.lowercased() == "log" }
             .map(workspace)
             .sorted {
