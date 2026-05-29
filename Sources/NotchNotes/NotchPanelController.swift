@@ -31,12 +31,15 @@ final class NotchPanelController: NSObject {
     private lazy var store = NoteStore(markdownRoot: directoryStore.markdownWorkingDirectoryURL)
     private lazy var imageStore = LocalImageStore(markdownRootURL: directoryStore.markdownWorkingDirectoryURL)
     private let markdownAIStore = MarkdownAIEditStore()
+    private let markdownAIChatStore = MarkdownAIChatStore()
     private let drawerState = DrawerState()
     private let editorInteractionState = EditorInteractionState()
     private let workbenchState = WorkbenchState()
     private let shellCommandStore = ShellCommandStore()
     private let shellWorkspaceStore = ShellWorkspaceStore()
     private let terminalTaskStore = TerminalTaskStore()
+    private let launchdJobStore = LaunchdJobStore()
+    private let launchdAIAgent = LaunchdAIAgent()
     private let condaStore = CondaEnvironmentStore()
     private let pythonStore = CodeFileStore(
         rootURL: WorkspacePaths.pythonRoot,
@@ -239,6 +242,7 @@ final class NotchPanelController: NSObject {
             settingsStore: settingsStore,
             imageStore: imageStore,
             markdownAIStore: markdownAIStore,
+            markdownAIChatStore: markdownAIChatStore,
             drawerState: drawerState,
             editorInteractionState: editorInteractionState,
             workbenchState: workbenchState,
@@ -246,6 +250,8 @@ final class NotchPanelController: NSObject {
             shellCommandStore: shellCommandStore,
             shellWorkspaceStore: shellWorkspaceStore,
             terminalTaskStore: terminalTaskStore,
+            launchdJobStore: launchdJobStore,
+            launchdAIAgent: launchdAIAgent,
             condaStore: condaStore,
             directoryStore: directoryStore,
             terminalRunner: terminalRunner,

@@ -16,6 +16,7 @@ enum WorkspacePaths {
     static let shellWorkspaceScriptRoot = shellRoot.appendingPathComponent("workspace-scripts", isDirectory: true)
     static let shellInputFile = shellRoot.appendingPathComponent("last-command.txt", isDirectory: false)
     static let shellOutputFile = shellRoot.appendingPathComponent("transcript.txt", isDirectory: false)
+    static let launchdRoot = root.appendingPathComponent("launchds", isDirectory: true)
 
     static func ensureDirectories() {
         let manager = FileManager.default
@@ -27,7 +28,8 @@ enum WorkspacePaths {
             shellRoot,
             shellWorkspaceRoot,
             shellWorkspaceInputRoot,
-            shellWorkspaceScriptRoot
+            shellWorkspaceScriptRoot,
+            launchdRoot
         ].forEach { url in
             try? manager.createDirectory(at: url, withIntermediateDirectories: true)
         }

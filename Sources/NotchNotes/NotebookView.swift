@@ -16,6 +16,7 @@ struct NotebookView: View {
     @ObservedObject var settingsStore: AppSettingsStore
     let imageStore: LocalImageStore
     @ObservedObject var markdownAIStore: MarkdownAIEditStore
+    @ObservedObject var markdownAIChatStore: MarkdownAIChatStore
     @ObservedObject var drawerState: DrawerState
     @ObservedObject var editorInteractionState: EditorInteractionState
     @ObservedObject var workbenchState: WorkbenchState
@@ -23,6 +24,8 @@ struct NotebookView: View {
     @ObservedObject var shellCommandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
     @ObservedObject var terminalTaskStore: TerminalTaskStore
+    @ObservedObject var launchdJobStore: LaunchdJobStore
+    @ObservedObject var launchdAIAgent: LaunchdAIAgent
     @ObservedObject var condaStore: CondaEnvironmentStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var terminalRunner: CommandRunner
@@ -79,6 +82,7 @@ struct NotebookView: View {
                         shellCommandStore: shellCommandStore,
                         shellWorkspaceStore: shellWorkspaceStore,
                         terminalTaskStore: terminalTaskStore,
+                        launchdJobStore: launchdJobStore,
                         terminalRunner: terminalRunner,
                         pythonRunner: pythonRunner
                     )
@@ -98,11 +102,14 @@ struct NotebookView: View {
                     settingsStore: settingsStore,
                     imageStore: imageStore,
                     markdownAIStore: markdownAIStore,
+                    markdownAIChatStore: markdownAIChatStore,
                     editorInteractionState: editorInteractionState,
                     pythonStore: pythonStore,
                     shellCommandStore: shellCommandStore,
                     shellWorkspaceStore: shellWorkspaceStore,
                     terminalTaskStore: terminalTaskStore,
+                    launchdJobStore: launchdJobStore,
+                    launchdAIAgent: launchdAIAgent,
                     condaStore: condaStore,
                     directoryStore: directoryStore,
                     terminalRunner: terminalRunner,
@@ -196,8 +203,11 @@ struct MarkdownEditorPanel: View {
     @ObservedObject var settingsStore: AppSettingsStore
     let imageStore: LocalImageStore
     @ObservedObject var aiStore: MarkdownAIEditStore
+    @ObservedObject var chatStore: MarkdownAIChatStore
     let editorInteractionState: EditorInteractionState
     let size: CGSize
+
+    @State private var aiMode: MarkdownAIMode = .edit
 
     private let outputHeight: CGFloat = 132
     private let toolbarHeight: CGFloat = 34
@@ -216,8 +226,15 @@ struct MarkdownEditorPanel: View {
                 .fill(.white.opacity(0.045))
                 .frame(width: size.width, height: separatorHeight)
 
-            MarkdownAIReviewView(aiStore: aiStore)
-                .frame(width: size.width, height: outputHeight)
+            Group {
+                switch aiMode {
+                case .edit:
+                    MarkdownAIReviewView(aiStore: aiStore)
+                case .chat:
+                    MarkdownAIChatView(chatStore: chatStore)
+                }
+            }
+            .frame(width: size.width, height: outputHeight)
 
             Rectangle()
                 .fill(.white.opacity(0.045))
@@ -226,7 +243,10 @@ struct MarkdownEditorPanel: View {
             MarkdownShortcutToolbar(
                 editorInteractionState: editorInteractionState,
                 aiStore: aiStore,
+                chatStore: chatStore,
+                aiMode: $aiMode,
                 onSubmitAI: submitAIEdit,
+                onSubmitChat: submitChat,
                 onAcceptAI: acceptAIEdit,
                 onRejectAI: aiStore.rejectProposal
             )
@@ -274,6 +294,14 @@ struct MarkdownEditorPanel: View {
         editorInteractionState.requestLayoutRefresh()
         aiStore.acceptProposal()
     }
+
+    private func submitChat() {
+        chatStore.submit(
+            settings: settingsStore,
+            markdownContent: store.text,
+            fileName: store.activeTab.fileName
+        )
+    }
 }
 
 struct WorkbenchModeControl: View {
@@ -320,6 +348,7 @@ struct WorkbenchTopToolsView: View {
     @ObservedObject var shellCommandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
     @ObservedObject var terminalTaskStore: TerminalTaskStore
+    @ObservedObject var launchdJobStore: LaunchdJobStore
     @ObservedObject var terminalRunner: CommandRunner
     @ObservedObject var pythonRunner: PythonReplRunner
 
@@ -342,8 +371,8 @@ struct WorkbenchTopToolsView: View {
                     runner: pythonRunner
                 )
             case .tasks:
-                TerminalTopToolsView(
-                    taskStore: terminalTaskStore
+                LaunchdTopToolsView(
+                    jobStore: launchdJobStore
                 )
             }
         }
@@ -401,14 +430,6 @@ struct MarkdownTopToolsView: View {
                 .buttonStyle(MarkdownToolbarButtonStyle())
                 .help("New Markdown")
 
-                Button {
-                    store.clear()
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 24, height: 22)
-                }
-                .buttonStyle(MarkdownToolbarButtonStyle())
-                .help("Clear current Markdown")
             }
         }
     }
@@ -583,87 +604,294 @@ struct ShellWorkspaceSearchResultsPopover: View {
     }
 }
 
-struct TerminalTopToolsView: View {
-    @ObservedObject var taskStore: TerminalTaskStore
+struct LaunchdTopToolsView: View {
+    @ObservedObject var jobStore: LaunchdJobStore
     @State private var isShowingSearchResults = false
 
     var body: some View {
         HStack(spacing: 8) {
             ActiveFileBadge(
-                title: taskStore.selectedTask?.title ?? "Terminal tasks",
-                detail: taskStore.selectedTask?.detail ?? "\(taskStore.tasks.count) tasks",
-                systemImage: "terminal.fill"
+                title: jobStore.selectedJob?.title ?? "Launchd Jobs",
+                detail: jobStore.selectedJob?.detail ?? "\(jobStore.jobs.count) plists",
+                systemImage: "clock.arrow.2.circlepath"
             )
 
             ToolbarSearchField(
-                placeholder: "term",
-                query: $taskStore.searchQuery,
-                resultCount: taskStore.filteredTasks.count,
+                placeholder: "plist",
+                query: $jobStore.searchQuery,
+                resultCount: jobStore.filteredJobs.count,
                 isShowingResults: $isShowingSearchResults
             ) {
-                TerminalTaskSearchResultsPopover(
-                    tasks: Array(taskStore.filteredTasks.prefix(40)),
-                    selectedTaskID: taskStore.selectedTask?.id
-                ) { task in
-                    taskStore.select(task)
-                    taskStore.searchQuery = ""
+                LaunchdJobSearchResultsPopover(
+                    jobs: Array(jobStore.filteredJobs.prefix(32)),
+                    selectedJobID: jobStore.selectedJob?.id
+                ) { job in
+                    jobStore.select(job)
+                    jobStore.searchQuery = ""
                     isShowingSearchResults = false
                 }
             }
 
             TopToolbarButtonStrip {
                 Button {
-                    taskStore.refresh()
-                    if taskStore.selectedTask?.canReceiveTerminalInput == true {
-                        taskStore.refreshSelectedTerminalSnapshot(silent: true)
-                    }
+                    jobStore.refresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .frame(width: 24, height: 22)
                 }
                 .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(taskStore.isRefreshing)
-                .help("Refresh terminal tasks")
+                .help("Refresh launchd jobs")
 
                 Button {
-                    taskStore.openNewTerminalWindow()
+                    let template = LaunchdJobStore.plistTemplate(label: "com.notchwow.new-task")
+                    jobStore.createJob(filename: "com.notchwow.new-task", content: template)
                 } label: {
                     Image(systemName: "plus")
                         .frame(width: 24, height: 22)
                 }
                 .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(taskStore.isTerminalBridgeBusy)
-                .help("New Terminal")
+                .help("New plist")
             }
         }
     }
 }
 
-struct TerminalTaskSearchResultsPopover: View {
-    let tasks: [TerminalTask]
-    let selectedTaskID: TerminalTask.ID?
-    let onSelect: (TerminalTask) -> Void
+struct LaunchdJobSearchResultsPopover: View {
+    let jobs: [LaunchdJob]
+    let selectedJobID: String?
+    let onSelect: (LaunchdJob) -> Void
 
     var body: some View {
         SearchResultsContainer {
-            if tasks.isEmpty {
+            if jobs.isEmpty {
                 EmptySearchResultView()
             } else {
-                ForEach(tasks) { task in
+                ForEach(jobs) { job in
                     Button {
-                        onSelect(task)
+                        onSelect(job)
                     } label: {
                         SearchResultRow(
-                            systemImage: task.systemImage,
-                            title: task.title,
-                            detail: task.detail
+                            systemImage: job.isLoaded ? "checkmark.circle.fill" : "circle",
+                            title: job.label,
+                            detail: job.detail
                         )
                     }
-                    .buttonStyle(FilePillButtonStyle(isSelected: task.id == selectedTaskID))
-                    .help(task.title)
+                    .buttonStyle(FilePillButtonStyle(isSelected: job.id == selectedJobID))
+                    .help(job.detail)
                 }
             }
         }
+    }
+}
+
+struct LaunchdPane: View {
+    @ObservedObject var jobStore: LaunchdJobStore
+    @ObservedObject var aiAgent: LaunchdAIAgent
+    @ObservedObject var settingsStore: AppSettingsStore
+    let size: CGSize
+
+    private let toolbarHeight: CGFloat = 34
+    private let outputHeight: CGFloat = 132
+    private let separatorHeight: CGFloat = 1
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TextEditor(text: $jobStore.editingContent)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.9))
+                .scrollContentBackground(.hidden)
+                .background(Color(red: 0.045, green: 0.047, blue: 0.055))
+                .frame(width: size.width, height: editorHeight)
+
+            Rectangle()
+                .fill(.white.opacity(0.045))
+                .frame(width: size.width, height: separatorHeight)
+
+            OutputView(output: launchdOutputText)
+                .frame(width: size.width, height: outputHeight)
+
+            Rectangle()
+                .fill(.white.opacity(0.045))
+                .frame(width: size.width, height: separatorHeight)
+
+            LaunchdInputToolbar(
+                jobStore: jobStore,
+                aiAgent: aiAgent,
+                settingsStore: settingsStore
+            )
+                .frame(width: size.width, height: toolbarHeight)
+                .background(Color(red: 0.055, green: 0.055, blue: 0.065))
+        }
+        .frame(width: size.width, height: size.height)
+        .onChange(of: aiAgent.generatedPlist) { _, plist in
+            if let plist {
+                jobStore.editingContent = plist
+                jobStore.saveEditingContent()
+            }
+        }
+    }
+
+    private var editorHeight: CGFloat {
+        max(size.height - outputHeight - toolbarHeight - separatorHeight * 2, 120)
+    }
+
+    private var launchdOutputText: String {
+        if aiAgent.isRunning {
+            return jobStore.outputLog.isEmpty
+                ? "AI 生成中..."
+                : jobStore.outputLog + "\n[...] AI 生成中..."
+        }
+        if !aiAgent.lastMessage.isEmpty && !jobStore.outputLog.contains(aiAgent.lastMessage) {
+            return jobStore.outputLog.isEmpty
+                ? aiAgent.lastMessage
+                : jobStore.outputLog + "\n" + aiAgent.lastMessage
+        }
+        return jobStore.outputLog.isEmpty ? "Ready" : jobStore.outputLog
+    }
+}
+
+struct LaunchdInputToolbar: View {
+    @ObservedObject var jobStore: LaunchdJobStore
+    @ObservedObject var aiAgent: LaunchdAIAgent
+    @ObservedObject var settingsStore: AppSettingsStore
+    @State private var isShowingLoadedPicker = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            LaunchdLoadedJobPicker(
+                jobStore: jobStore,
+                isShowingPicker: $isShowingLoadedPicker
+            )
+
+            LaunchdAIInputField(aiAgent: aiAgent) {
+                submitAI()
+            }
+
+            Button {
+                submitAI()
+            } label: {
+                Image(systemName: "sparkles")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .disabled(!aiAgent.canSubmit)
+            .help("AI 生成 plist")
+
+            Button {
+                jobStore.saveEditingContent()
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .disabled(jobStore.selectedJob == nil)
+            .help("Save plist")
+
+            Button {
+                guard let job = jobStore.selectedJob else { return }
+                if job.isLoaded {
+                    jobStore.unloadJob(job)
+                } else {
+                    jobStore.loadJob(job)
+                }
+            } label: {
+                Image(systemName: jobStore.selectedJob?.isLoaded == true ? "stop.fill" : "play.fill")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .disabled(jobStore.selectedJob == nil)
+            .help(jobStore.selectedJob?.isLoaded == true ? "Unload (stop)" : "Load (start)")
+        }
+        .padding(.horizontal, 10)
+    }
+
+    private func submitAI() {
+        let context = LaunchdAIContext(
+            existingJobs: jobStore.jobs,
+            availableShellScripts: listScripts(in: WorkspacePaths.shellWorkspaceScriptRoot, ext: "sh"),
+            availablePythonScripts: listScripts(in: WorkspacePaths.pythonRoot, ext: "py"),
+            selectedJob: jobStore.selectedJob,
+            launchdPath: settingsStore.launchdPath
+        )
+        aiAgent.submit(settings: settingsStore, context: context)
+    }
+
+    private func listScripts(in directory: URL, ext: String) -> [String] {
+        (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]))?.filter { $0.pathExtension == ext }.map { $0.lastPathComponent } ?? []
+    }
+}
+
+struct LaunchdLoadedJobPicker: View {
+    @ObservedObject var jobStore: LaunchdJobStore
+    @Binding var isShowingPicker: Bool
+
+    private var loadedCount: Int {
+        jobStore.loadedJobs.count
+    }
+
+    var body: some View {
+        Button {
+            isShowingPicker.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "play.circle.fill")
+                    .frame(width: 15)
+
+                Text("\(loadedCount) active")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.38))
+            }
+            .foregroundStyle(.white.opacity(0.78))
+            .frame(width: 108, height: 24, alignment: .leading)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(FilePillButtonStyle(isSelected: isShowingPicker))
+        .help("Loaded jobs")
+        .popover(
+            isPresented: $isShowingPicker,
+            attachmentAnchor: .point(UnitPoint(x: 1, y: 0.5)),
+            arrowEdge: .top
+        ) {
+            LaunchdJobSearchResultsPopover(
+                jobs: jobStore.loadedJobs,
+                selectedJobID: jobStore.selectedJob?.id
+            ) { job in
+                jobStore.select(job)
+                isShowingPicker = false
+            }
+        }
+    }
+}
+
+struct LaunchdAIInputField: View {
+    @ObservedObject var aiAgent: LaunchdAIAgent
+    let onSubmit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(.white.opacity(0.54))
+                .frame(width: 15, height: 22)
+
+            TextField("描述你要自动化的任务...", text: $aiAgent.input)
+                .textFieldStyle(.plain)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.white.opacity(aiAgent.isRunning ? 0.38 : 0.9))
+                .disabled(aiAgent.isRunning)
+                .onSubmit(onSubmit)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity)
+        .frame(height: 26, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(.white.opacity(0.045))
+        )
     }
 }
 
@@ -741,11 +969,14 @@ struct WorkbenchContentView: View {
     @ObservedObject var settingsStore: AppSettingsStore
     let imageStore: LocalImageStore
     @ObservedObject var markdownAIStore: MarkdownAIEditStore
+    @ObservedObject var markdownAIChatStore: MarkdownAIChatStore
     let editorInteractionState: EditorInteractionState
     @ObservedObject var pythonStore: CodeFileStore
     @ObservedObject var shellCommandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
     @ObservedObject var terminalTaskStore: TerminalTaskStore
+    @ObservedObject var launchdJobStore: LaunchdJobStore
+    @ObservedObject var launchdAIAgent: LaunchdAIAgent
     @ObservedObject var condaStore: CondaEnvironmentStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var terminalRunner: CommandRunner
@@ -761,6 +992,7 @@ struct WorkbenchContentView: View {
                     settingsStore: settingsStore,
                     imageStore: imageStore,
                     markdownAIStore: markdownAIStore,
+                    markdownAIChatStore: markdownAIChatStore,
                     editorInteractionState: editorInteractionState,
                     directoryStore: directoryStore,
                     size: size
@@ -782,14 +1014,12 @@ struct WorkbenchContentView: View {
                     size: size
                 )
             case .tasks:
-                TerminalTasksPane(
-                    taskStore: terminalTaskStore,
+                LaunchdPane(
+                    jobStore: launchdJobStore,
+                    aiAgent: launchdAIAgent,
+                    settingsStore: settingsStore,
                     size: size
-                ) { task in
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        workbenchState.select(task.command.localizedCaseInsensitiveContains("python") ? .python : .terminal)
-                    }
-                }
+                )
             }
         }
     }
@@ -800,6 +1030,7 @@ struct MarkdownWorkspaceView: View {
     @ObservedObject var settingsStore: AppSettingsStore
     let imageStore: LocalImageStore
     @ObservedObject var markdownAIStore: MarkdownAIEditStore
+    @ObservedObject var markdownAIChatStore: MarkdownAIChatStore
     let editorInteractionState: EditorInteractionState
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     let size: CGSize
@@ -810,6 +1041,7 @@ struct MarkdownWorkspaceView: View {
             settingsStore: settingsStore,
             imageStore: imageStore,
             aiStore: markdownAIStore,
+            chatStore: markdownAIChatStore,
             editorInteractionState: editorInteractionState,
             size: size
         )
@@ -1782,373 +2014,6 @@ struct CommandPane: View {
     }
 }
 
-struct TerminalTasksPane: View {
-    @ObservedObject var taskStore: TerminalTaskStore
-    let size: CGSize
-    let onJumpToManagedTask: (TerminalTask) -> Void
-
-    private let statusHeight: CGFloat = 132
-    private let toolbarHeight: CGFloat = 34
-    private let separatorHeight: CGFloat = 1
-    private let snapshotTimer = Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TerminalSnapshotView(taskStore: taskStore)
-                .frame(width: size.width, height: snapshotHeight)
-                .background(Color(red: 0.045, green: 0.047, blue: 0.055))
-
-            Rectangle()
-                .fill(.white.opacity(0.045))
-                .frame(width: size.width, height: separatorHeight)
-
-            TerminalTaskStatusView(taskStore: taskStore)
-                .frame(width: size.width, height: statusHeight)
-
-            Rectangle()
-                .fill(.white.opacity(0.045))
-                .frame(width: size.width, height: separatorHeight)
-
-            TerminalInputToolbar(
-                taskStore: taskStore,
-                onJumpToManagedTask: onJumpToManagedTask
-            )
-                .frame(width: size.width, height: toolbarHeight)
-                .background(Color(red: 0.055, green: 0.055, blue: 0.065))
-        }
-        .frame(width: size.width, height: size.height)
-        .onAppear(perform: refreshCurrentSnapshotIfReadable)
-        .onChange(of: taskStore.selectedTaskID) { _, _ in
-            refreshCurrentSnapshotIfReadable()
-        }
-        .onReceive(snapshotTimer) { _ in
-            if taskStore.selectedTask?.canReceiveTerminalInput == true,
-               taskStore.terminalSnapshot != nil {
-                taskStore.refreshSelectedTerminalSnapshot(silent: true)
-            }
-        }
-    }
-
-    private var snapshotHeight: CGFloat {
-        max(size.height - statusHeight - toolbarHeight - separatorHeight * 2, 120)
-    }
-
-    private func refreshCurrentSnapshotIfReadable() {
-        guard taskStore.selectedTask?.canReceiveTerminalInput == true else { return }
-        taskStore.refreshSelectedTerminalSnapshot(silent: true)
-    }
-}
-
-struct TerminalSnapshotView: View {
-    @ObservedObject var taskStore: TerminalTaskStore
-
-    private var selectedTask: TerminalTask? {
-        taskStore.selectedTask
-    }
-
-    private var snapshotText: String {
-        guard let selectedTask else { return "No terminal task selected" }
-
-        guard selectedTask.canReceiveTerminalInput else {
-            return "\(selectedTask.readOnlyReason)\n\n\(taskStore.processSummary(for: selectedTask))"
-        }
-
-        if let contents = taskStore.terminalSnapshot?.contents,
-           !contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return contents
-        }
-
-        if taskStore.terminalSnapshot != nil {
-            return "Terminal tab is empty\n\(selectedTask.tty)"
-        }
-
-        if taskStore.isTerminalBridgeBusy {
-            return "Reading Terminal tab...\n\(selectedTask.tty)"
-        }
-
-        return "No Terminal snapshot yet\nRefresh to read \(selectedTask.tty)"
-    }
-
-    var body: some View {
-        OutputView(output: snapshotText)
-    }
-}
-
-struct TerminalTaskStatusView: View {
-    @ObservedObject var taskStore: TerminalTaskStore
-
-    private var selectedTask: TerminalTask? {
-        taskStore.selectedTask
-    }
-
-    private var operationText: String {
-        if taskStore.isTerminalBridgeBusy {
-            return "Working"
-        }
-        return taskStore.terminalBridgeMessage ?? "Ready"
-    }
-
-    private var statusText: String {
-        guard let selectedTask else { return "No terminal task selected" }
-
-        let target = selectedTask.canReceiveTerminalInput
-            ? "writable Terminal.app tab"
-            : "read-only: \(selectedTask.readOnlyReason)"
-        let snapshotStatus: String
-        if let snapshot = taskStore.terminalSnapshot {
-            snapshotStatus = "\(snapshot.tty)  \(snapshot.isBusy ? "busy" : "idle")"
-        } else {
-            snapshotStatus = "not loaded"
-        }
-
-        return """
-        operation      \(operationText)
-        target         \(target)
-        tty            \(selectedTask.tty)
-        pgid           \(selectedTask.processGroupID)
-        representative \(selectedTask.representativePID)
-        state          \(selectedTask.state)  \(selectedTask.elapsed)
-        processes      \(selectedTask.processCount)
-        snapshot       \(snapshotStatus)
-        command        \(TerminalTaskStore.shortCommand(selectedTask.command))
-        """
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: taskStore.terminalOperationIsError ? "exclamationmark.triangle" : "info.circle")
-                    .foregroundStyle(.white.opacity(0.58))
-                    .frame(width: 16)
-
-                Text("Task status")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.82))
-
-                Text(operationText)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(taskStore.terminalOperationIsError ? 0.72 : 0.42))
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                if taskStore.isTerminalBridgeBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                        .scaleEffect(0.58)
-                        .frame(width: 18, height: 18)
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 30)
-            .background(Color(red: 0.04, green: 0.042, blue: 0.05))
-
-            ScrollView {
-                Text(statusText)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.76))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(10)
-            }
-            .background(Color(red: 0.035, green: 0.037, blue: 0.044))
-        }
-    }
-}
-
-struct TerminalInputToolbar: View {
-    @ObservedObject var taskStore: TerminalTaskStore
-    let onJumpToManagedTask: (TerminalTask) -> Void
-    @State private var isShowingTaskPicker = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            TerminalTaskPicker(
-                taskStore: taskStore,
-                isShowingTaskPicker: $isShowingTaskPicker
-            )
-
-            TerminalCommandField(taskStore: taskStore)
-
-            Button {
-                if let task = taskStore.selectedTask, task.isNotchwowManaged {
-                    onJumpToManagedTask(task)
-                } else {
-                    taskStore.focusSelectedTerminal()
-                }
-            } label: {
-                Image(systemName: "arrow.up.forward.app")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(!canFocusOrJump || taskStore.isTerminalBridgeBusy)
-            .help(taskStore.selectedTask?.isNotchwowManaged == true ? "Jump to notchwow pane" : "Focus Terminal tab")
-
-            Button {
-                taskStore.runTerminalInput()
-            } label: {
-                Image(systemName: "play.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(!canRunInput)
-            .help("Run in Terminal")
-
-            Button {
-                taskStore.terminateSelectedTask()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(taskStore.selectedTask == nil)
-            .help("Send SIGTERM to selected task group")
-
-            Button {
-                taskStore.killSelectedTask()
-            } label: {
-                Image(systemName: "xmark.octagon.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(taskStore.selectedTask == nil)
-            .help("Force kill selected task group")
-        }
-        .padding(.horizontal, 10)
-    }
-
-    private var canFocusOrJump: Bool {
-        guard let selectedTask = taskStore.selectedTask else { return false }
-        return selectedTask.isNotchwowManaged || selectedTask.canReceiveTerminalInput
-    }
-
-    private var canRunInput: Bool {
-        taskStore.canSendTerminalInput
-            && !taskStore.isTerminalBridgeBusy
-            && !taskStore.terminalInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-}
-
-struct TerminalTaskPicker: View {
-    @ObservedObject var taskStore: TerminalTaskStore
-    @Binding var isShowingTaskPicker: Bool
-
-    var body: some View {
-        Button {
-            isShowingTaskPicker.toggle()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: taskStore.selectedTask?.systemImage ?? "terminal")
-                    .frame(width: 15)
-
-                Text(taskStore.selectedTask?.tty ?? "term")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .lineLimit(1)
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.38))
-            }
-            .foregroundStyle(.white.opacity(0.78))
-            .frame(width: 118, height: 24, alignment: .leading)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(FilePillButtonStyle(isSelected: isShowingTaskPicker))
-        .help("Terminal task")
-        .popover(
-            isPresented: $isShowingTaskPicker,
-            attachmentAnchor: .point(leftPickerPopoverAnchor),
-            arrowEdge: .top
-        ) {
-            TerminalTaskSearchResultsPopover(
-                tasks: taskStore.tasks,
-                selectedTaskID: taskStore.selectedTask?.id
-            ) { task in
-                taskStore.select(task)
-                isShowingTaskPicker = false
-            }
-        }
-    }
-}
-
-struct TerminalCommandField: View {
-    @ObservedObject var taskStore: TerminalTaskStore
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "terminal")
-                .foregroundStyle(.white.opacity(0.54))
-                .frame(width: 15, height: 22)
-
-            TextField(placeholder, text: $taskStore.terminalInput)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(canType ? 0.9 : 0.38))
-                .disabled(!canType)
-                .onSubmit {
-                    taskStore.runTerminalInput()
-                }
-        }
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity)
-        .frame(height: 26, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(.white.opacity(0.045))
-        )
-    }
-
-    private var canType: Bool {
-        taskStore.canSendTerminalInput && !taskStore.isTerminalBridgeBusy
-    }
-
-    private var placeholder: String {
-        guard taskStore.selectedTask != nil else { return "No Terminal target" }
-        return taskStore.canSendTerminalInput ? "Terminal command" : "Read-only task"
-    }
-}
-
-extension TerminalTask {
-    var readOnlyReason: String {
-        if isNotchwowManaged {
-            return "notchwow-managed task"
-        }
-        if isZombieOnly {
-            return "zombie process group"
-        }
-        if !isTerminalAppBacked {
-            return "not backed by Terminal.app"
-        }
-        if tty == "??" || tty == "notchwow" {
-            return "no writable tty"
-        }
-        return "read-only task"
-    }
-
-    var systemImage: String {
-        if isNotchwowManaged {
-            return title.localizedCaseInsensitiveContains("python")
-                ? "chevron.left.forwardslash.chevron.right"
-                : "dollarsign.square"
-        }
-        if isZombieOnly {
-            return "exclamationmark.triangle"
-        }
-        if title.localizedCaseInsensitiveContains("opencode") {
-            return "sparkles"
-        }
-        if title.localizedCaseInsensitiveContains("npm")
-            || title.localizedCaseInsensitiveContains("node") {
-            return "network"
-        }
-        if title.localizedCaseInsensitiveContains("python") {
-            return "chevron.left.forwardslash.chevron.right"
-        }
-        return "terminal"
-    }
-}
-
 struct OutputView: View {
     let output: String
     private let bottomID = "output-bottom"
@@ -2180,6 +2045,101 @@ struct OutputView: View {
                 }
             }
         }
+    }
+}
+
+enum MarkdownAIMode {
+    case edit
+    case chat
+}
+
+struct MarkdownAIChatView: View {
+    @ObservedObject var chatStore: MarkdownAIChatStore
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                if chatStore.messages.isEmpty {
+                    Text("Ask anything about this note — quiz me, summarize, explain...")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(10)
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(chatStore.messages) { message in
+                            AIChatBubble(message: message)
+                                .id(message.id)
+                        }
+
+                        if chatStore.isRunning {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .scaleEffect(0.5)
+                                    .frame(width: 12, height: 12)
+                                Text("Thinking...")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.42))
+                            }
+                            .padding(.horizontal, 10)
+                            .id("loading")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.vertical, 6)
+                }
+            }
+            .onChange(of: chatStore.messages.count) { _, _ in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if let last = chatStore.messages.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    } else if chatStore.isRunning {
+                        proxy.scrollTo("loading", anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .background(Color(red: 0.035, green: 0.037, blue: 0.044))
+    }
+}
+
+struct AIChatBubble: View {
+    let message: AIChatMessage
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            if message.role == .assistant {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.purple.opacity(0.7))
+                    .frame(width: 12, alignment: .top)
+                    .padding(.top, 2)
+            }
+
+            Text(message.content)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.white.opacity(message.role == .user ? 0.88 : 0.72))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(message.role == .user
+                              ? Color.white.opacity(0.06)
+                              : Color.purple.opacity(0.08))
+                )
+
+            if message.role == .user {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 12, alignment: .top)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 10)
     }
 }
 
@@ -2269,7 +2229,10 @@ struct MarkdownAIComparisonColumn: View {
 struct MarkdownShortcutToolbar: View {
     let editorInteractionState: EditorInteractionState
     @ObservedObject var aiStore: MarkdownAIEditStore
+    @ObservedObject var chatStore: MarkdownAIChatStore
+    @Binding var aiMode: MarkdownAIMode
     let onSubmitAI: () -> Void
+    let onSubmitChat: () -> Void
     let onAcceptAI: () -> Void
     let onRejectAI: () -> Void
 
@@ -2289,7 +2252,7 @@ struct MarkdownShortcutToolbar: View {
 
             Spacer(minLength: 0)
 
-            if aiStore.proposal != nil {
+            if aiMode == .edit, aiStore.proposal != nil {
                 Button(action: onAcceptAI) {
                     Image(systemName: "checkmark")
                         .frame(width: 26, height: 24)
@@ -2307,30 +2270,56 @@ struct MarkdownShortcutToolbar: View {
                 .help("Reject AI edit")
             }
 
+            if aiMode == .chat, !chatStore.messages.isEmpty {
+                Button(action: chatStore.clear) {
+                    Image(systemName: "trash")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(chatStore.isRunning)
+                .help("Clear chat")
+            }
+
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    aiMode = aiMode == .edit ? .chat : .edit
+                }
+            } label: {
+                Image(systemName: aiMode == .edit ? "pencil.line" : "bubble.left.fill")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .help(aiMode == .edit ? "Switch to Chat mode" : "Switch to Edit mode")
+
             HStack(spacing: 6) {
-                Image(systemName: "sparkles")
+                Image(systemName: aiMode == .edit ? "sparkles" : "bubble.left")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.46))
                     .frame(width: 14)
 
-                TextField("Ask AI", text: $aiStore.input)
+                TextField(
+                    aiMode == .edit ? "Ask AI to edit" : "Ask about this note...",
+                    text: aiMode == .edit ? $aiStore.input : $chatStore.input
+                )
                     .textFieldStyle(.plain)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.86))
-                    .disabled(aiStore.isRunning)
+                    .disabled(aiMode == .edit ? aiStore.isRunning : chatStore.isRunning)
                     .onSubmit {
-                        if aiStore.canSubmit {
-                            onSubmitAI()
+                        if aiMode == .edit {
+                            if aiStore.canSubmit { onSubmitAI() }
+                        } else {
+                            if chatStore.canSubmit { onSubmitChat() }
                         }
                     }
 
-                Button(action: onSubmitAI) {
+                Button(action: aiMode == .edit ? onSubmitAI : onSubmitChat) {
                     Image(systemName: "arrow.up")
                         .frame(width: 24, height: 22)
                 }
                 .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(!aiStore.canSubmit)
-                .help("Ask AI to edit the cursor or selection")
+                .disabled(aiMode == .edit ? !aiStore.canSubmit : !chatStore.canSubmit)
+                .help(aiMode == .edit ? "Ask AI to edit" : "Send message")
             }
             .padding(.leading, 8)
             .padding(.trailing, 4)

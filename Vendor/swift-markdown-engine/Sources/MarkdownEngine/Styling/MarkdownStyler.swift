@@ -337,12 +337,17 @@ extension MarkdownStyler {
                     .strikethroughStyle: NSUnderlineStyle.thick.rawValue,
                     .strikethroughColor: ctx.configuration.theme.strikethroughColor
                 ]))
+                // 用 kern 把最后一个字符拉伸到远超容器宽度，配合 byClipping 裁剪，
+                // 使 strikethrough 视觉上覆盖整行宽度
+                let lastCharRange = NSRange(location: hrMatch.range.location + hrMatch.range.length - 1, length: 1)
+                attrs.append((lastCharRange, [.kern: CGFloat(10000)]))
                 let rulePara = NSMutableParagraphStyle()
                 rulePara.minimumLineHeight = ctx.baseDefaultLineHeight
                 rulePara.maximumLineHeight = ctx.baseDefaultLineHeight
                 rulePara.lineSpacing = 0
                 rulePara.paragraphSpacing = ctx.baseParagraphSpacing
                 rulePara.paragraphSpacingBefore = 0
+                rulePara.lineBreakMode = .byClipping
                 attrs.append((hrMatch.range, [.paragraphStyle: rulePara]))
             }
         }

@@ -54,7 +54,6 @@ final class TerminalTaskStore: ObservableObject {
     @Published private(set) var tasks: [TerminalTask] = []
     @Published var selectedTaskID: TerminalTask.ID?
     @Published var searchQuery = ""
-    @Published var terminalInput = ""
     @Published private(set) var lastRefresh = Date()
     @Published private(set) var isRefreshing = false
     @Published private(set) var terminalSnapshot: TerminalTabSnapshot?
@@ -78,8 +77,10 @@ final class TerminalTaskStore: ObservableObject {
         return tasks.first { $0.id == selectedTaskID } ?? tasks.first
     }
 
-    var canSendTerminalInput: Bool {
-        selectedTask?.canReceiveTerminalInput == true
+    var availableTerminalTabs: [String] {
+        tasks
+            .filter { $0.canReceiveTerminalInput }
+            .map { $0.tty }
     }
 
     var filteredTasks: [TerminalTask] {
@@ -122,24 +123,17 @@ final class TerminalTaskStore: ObservableObject {
         }
 
         if previousTaskID != selectedTaskID {
-            terminalInput = ""
             terminalSnapshot = nil
             setTerminalOperationMessage(nil)
         }
-        clearInputIfSelectedTaskCannotReceiveInput()
 
         lastRefresh = Date()
     }
 
     func select(_ task: TerminalTask) {
-        let previousTaskID = selectedTaskID
         selectedTaskID = task.id
-        if previousTaskID != selectedTaskID {
-            terminalInput = ""
-        }
         terminalSnapshot = nil
         setTerminalOperationMessage(nil)
-        clearInputIfSelectedTaskCannotReceiveInput()
     }
 
     func terminateSelectedTask() {
@@ -233,54 +227,6 @@ final class TerminalTaskStore: ObservableObject {
         }
     }
 
-    func runTerminalInput() {
-        let command = terminalInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard canSendTerminalInput else {
-            terminalInput = ""
-            setTerminalOperationMessage(
-                selectedTask == nil
-                    ? "No terminal task selected"
-                    : "This task is not backed by a writable Terminal.app tab.",
-                isError: true
-            )
-            return
-        }
-
-        guard !command.isEmpty else {
-            focusSelectedTerminal()
-            return
-        }
-
-        let task = selectedTask
-        let tty = task?.tty
-        let taskID = task?.id
-        let representativePID = task?.representativePID
-
-        runTerminalBridgeOperation {
-            let workingDirectory = representativePID.flatMap(Self.workingDirectory(for:))
-            return TerminalAppBridge.run(command: command, tty: tty, workingDirectory: workingDirectory)
-        } completion: { [weak self] result in
-            guard let self else { return }
-
-            switch result {
-            case .success:
-                self.terminalInput = ""
-                self.setTerminalOperationMessage("Sent")
-                self.refreshSoon()
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                    guard let self else { return }
-                    if taskID == nil || self.selectedTaskID == taskID {
-                        self.refreshSelectedTerminalSnapshot(silent: true)
-                    }
-                }
-
-            case .failure(let message):
-                self.setTerminalOperationMessage(message, isError: true)
-            }
-        }
-    }
-
     func clearTerminalSnapshot() {
         terminalSnapshot = nil
         setTerminalOperationMessage(nil)
@@ -299,11 +245,6 @@ final class TerminalTaskStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.refresh()
         }
-    }
-
-    private func clearInputIfSelectedTaskCannotReceiveInput() {
-        guard selectedTask?.canReceiveTerminalInput != true else { return }
-        terminalInput = ""
     }
 
     private func setTerminalOperationMessage(_ message: String?, isError: Bool = false) {

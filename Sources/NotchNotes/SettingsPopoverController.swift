@@ -240,21 +240,32 @@ struct SettingsPopoverView: View {
                     title: "md cwd",
                     path: $directoryStore.markdownWorkingDirectory,
                     openAction: directoryStore.openMarkdownWorkingDirectory,
-                    openInVSCodeAction: directoryStore.openMarkdownWorkingDirectoryInVSCode
+                    openInVSCodeAction: directoryStore.openMarkdownWorkingDirectoryInVSCode,
+                    openInTerminalAction: directoryStore.openMarkdownWorkingDirectoryInTerminal
                 )
 
                 DirectorySettingRow(
                     title: "sh cwd",
                     path: $directoryStore.shellWorkingDirectory,
                     openAction: directoryStore.openShellWorkingDirectory,
-                    openInVSCodeAction: directoryStore.openShellWorkingDirectoryInVSCode
+                    openInVSCodeAction: directoryStore.openShellWorkingDirectoryInVSCode,
+                    openInTerminalAction: directoryStore.openShellWorkingDirectoryInTerminal
                 )
 
                 DirectorySettingRow(
                     title: "py cwd",
                     path: $directoryStore.pythonProjectDirectory,
                     openAction: directoryStore.openPythonProjectDirectory,
-                    openInVSCodeAction: directoryStore.openPythonProjectDirectoryInVSCode
+                    openInVSCodeAction: directoryStore.openPythonProjectDirectoryInVSCode,
+                    openInTerminalAction: directoryStore.openPythonProjectDirectoryInTerminal
+                )
+
+                DirectorySettingRow(
+                    title: "launchd",
+                    path: $directoryStore.launchdDirectory,
+                    openAction: directoryStore.openLaunchdDirectory,
+                    openInVSCodeAction: directoryStore.openLaunchdDirectoryInVSCode,
+                    openInTerminalAction: directoryStore.openLaunchdDirectoryInTerminal
                 )
             }
 
@@ -279,7 +290,7 @@ struct SettingsPopoverView: View {
             }
         }
         .padding(14)
-        .frame(width: 400, height: 408)
+        .frame(width: 440, height: 480)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(red: 0.045, green: 0.045, blue: 0.052).opacity(0.98))
@@ -333,6 +344,7 @@ struct DirectorySettingRow: View {
     @Binding var path: String
     let openAction: () -> Void
     let openInVSCodeAction: () -> Void
+    let openInTerminalAction: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -358,7 +370,7 @@ struct DirectorySettingRow: View {
                     .frame(width: 26, height: 24)
             }
             .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Open directory")
+            .help("Open in Finder")
 
             Button(action: openInVSCodeAction) {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
@@ -366,6 +378,13 @@ struct DirectorySettingRow: View {
             }
             .buttonStyle(MarkdownToolbarButtonStyle())
             .help("Open in VS Code")
+
+            Button(action: openInTerminalAction) {
+                Image(systemName: "terminal")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .help("Open in Terminal")
         }
     }
 }

@@ -22,9 +22,16 @@ final class WorkspaceDirectoryStore: ObservableObject {
         }
     }
 
+    @Published var launchdDirectory: String {
+        didSet {
+            persistLaunchdDirectory()
+        }
+    }
+
     private static let markdownWorkingDirectoryKey = "notchNotes.markdownWorkingDirectory"
     private static let shellWorkingDirectoryKey = "notchNotes.shellWorkingDirectory"
     private static let pythonProjectDirectoryKey = "notchNotes.pythonProjectDirectory"
+    private static let launchdDirectoryKey = "notchNotes.launchdPath"
 
     init() {
         markdownWorkingDirectory = UserDefaults.standard.string(forKey: Self.markdownWorkingDirectoryKey)
@@ -38,6 +45,8 @@ final class WorkspaceDirectoryStore: ObservableObject {
         }
         pythonProjectDirectory = UserDefaults.standard.string(forKey: Self.pythonProjectDirectoryKey)
             ?? WorkspacePaths.pythonRoot.path
+        launchdDirectory = UserDefaults.standard.string(forKey: Self.launchdDirectoryKey)
+            ?? WorkspacePaths.launchdRoot.path
     }
 
     var markdownWorkingDirectoryURL: URL {
@@ -52,29 +61,65 @@ final class WorkspaceDirectoryStore: ObservableObject {
         validatedDirectoryURL(pythonProjectDirectory, fallback: WorkspacePaths.pythonRoot)
     }
 
-    func openMarkdownWorkingDirectory() {
-        NSWorkspace.shared.open(markdownWorkingDirectoryURL)
+    var launchdDirectoryURL: URL {
+        validatedDirectoryURL(launchdDirectory, fallback: WorkspacePaths.launchdRoot)
     }
 
-    func openMarkdownWorkingDirectoryInVSCode() {
-        openInVSCode(markdownWorkingDirectoryURL)
+    // MARK: - Finder
+
+    func openMarkdownWorkingDirectory() {
+        NSWorkspace.shared.open(markdownWorkingDirectoryURL)
     }
 
     func openShellWorkingDirectory() {
         NSWorkspace.shared.open(shellWorkingDirectoryURL)
     }
 
-    func openShellWorkingDirectoryInVSCode() {
-        openInVSCode(shellWorkingDirectoryURL)
-    }
-
     func openPythonProjectDirectory() {
         NSWorkspace.shared.open(pythonProjectDirectoryURL)
+    }
+
+    func openLaunchdDirectory() {
+        NSWorkspace.shared.open(launchdDirectoryURL)
+    }
+
+    // MARK: - VS Code
+
+    func openMarkdownWorkingDirectoryInVSCode() {
+        openInVSCode(markdownWorkingDirectoryURL)
+    }
+
+    func openShellWorkingDirectoryInVSCode() {
+        openInVSCode(shellWorkingDirectoryURL)
     }
 
     func openPythonProjectDirectoryInVSCode() {
         openInVSCode(pythonProjectDirectoryURL)
     }
+
+    func openLaunchdDirectoryInVSCode() {
+        openInVSCode(launchdDirectoryURL)
+    }
+
+    // MARK: - Terminal
+
+    func openMarkdownWorkingDirectoryInTerminal() {
+        openInTerminal(markdownWorkingDirectoryURL)
+    }
+
+    func openShellWorkingDirectoryInTerminal() {
+        openInTerminal(shellWorkingDirectoryURL)
+    }
+
+    func openPythonProjectDirectoryInTerminal() {
+        openInTerminal(pythonProjectDirectoryURL)
+    }
+
+    func openLaunchdDirectoryInTerminal() {
+        openInTerminal(launchdDirectoryURL)
+    }
+
+    // MARK: - Private
 
     private func openInVSCode(_ directoryURL: URL) {
         if let applicationURL = Self.visualStudioCodeApplicationURL() {
@@ -91,6 +136,10 @@ final class WorkspaceDirectoryStore: ObservableObject {
         if let url = Self.visualStudioCodeFileURL(for: directoryURL) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func openInTerminal(_ directoryURL: URL) {
+        _ = TerminalAppBridge.openNewWindow(workingDirectory: directoryURL.path)
     }
 
     private static func visualStudioCodeApplicationURL() -> URL? {
@@ -120,6 +169,10 @@ final class WorkspaceDirectoryStore: ObservableObject {
 
     private func persistPythonProjectDirectory() {
         UserDefaults.standard.set(Self.normalizedPath(pythonProjectDirectory), forKey: Self.pythonProjectDirectoryKey)
+    }
+
+    private func persistLaunchdDirectory() {
+        UserDefaults.standard.set(Self.normalizedPath(launchdDirectory), forKey: Self.launchdDirectoryKey)
     }
 
     private nonisolated func validatedDirectoryURL(_ path: String, fallback: URL) -> URL {

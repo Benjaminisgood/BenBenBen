@@ -46,6 +46,12 @@ final class AppSettingsStore: ObservableObject {
         }
     }
 
+    /// Kept for backward compatibility — reads from the same UserDefaults key as WorkspaceDirectoryStore.launchdDirectory
+    var launchdPath: String {
+        UserDefaults.standard.string(forKey: "notchNotes.launchdPath")
+            ?? WorkspacePaths.launchdRoot.path
+    }
+
     private static let triggerModeKey = "notchNotes.triggerMode"
     private static let bailianAPIKeyKey = "notchNotes.bailianAPIKey"
     private static let bailianModelKey = "notchNotes.bailianModel"
