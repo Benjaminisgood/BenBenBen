@@ -101,49 +101,20 @@ struct LaunchdAIContext {
 }
 
 private enum LaunchdAIClient {
-    private static let chatCompletionsURL = URL(string: "https://coding.dashscope.aliyuncs.com/v1/chat/completions")!
-
     static func chat(
         apiKey: String,
         model: String,
         userMessage: String,
         context: LaunchdAIContext
     ) async throws -> String {
-        var urlRequest = URLRequest(url: chatCompletionsURL)
-        urlRequest.httpMethod = "POST"
-        urlRequest.timeoutInterval = 120
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let messages: [[String: String]] = [
-            ["role": "system", "content": systemPrompt(context: context)],
-            ["role": "user", "content": userMessage]
-        ]
-
-        let body: [String: Any] = [
-            "model": model,
-            "messages": messages,
-            "temperature": 0.7
-        ]
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LaunchdAIError.invalidResponse
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8)
-                ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
-            throw LaunchdAIError.http(status: httpResponse.statusCode, message: message)
-        }
-
-        let decoded = try JSONDecoder().decode(AIResponse.self, from: data)
-        guard let content = decoded.choices.first?.message.content,
-              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw LaunchdAIError.emptyResponse
-        }
-
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
+        try await BailianChatClient.chat(
+            apiKey: apiKey,
+            model: model,
+            messages: [
+                BailianChatMessage(role: "system", content: systemPrompt(context: context)),
+                BailianChatMessage(role: "user", content: userMessage)
+            ]
+        )
     }
 
     private static func systemPrompt(context: LaunchdAIContext) -> String {
@@ -202,34 +173,5 @@ private enum LaunchdAIClient {
         \(jobList)
         \(currentPlist)
         """
-    }
-}
-
-private struct AIResponse: Decodable {
-    let choices: [Choice]
-
-    struct Choice: Decodable {
-        let message: Message
-    }
-
-    struct Message: Decodable {
-        let content: String?
-    }
-}
-
-private enum LaunchdAIError: LocalizedError {
-    case invalidResponse
-    case http(status: Int, message: String)
-    case emptyResponse
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidResponse:
-            return "Invalid server response."
-        case .http(let status, let message):
-            return "HTTP \(status): \(message)"
-        case .emptyResponse:
-            return "The model returned no text."
-        }
     }
 }

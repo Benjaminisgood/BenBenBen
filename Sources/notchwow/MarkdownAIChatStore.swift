@@ -86,8 +86,6 @@ final class MarkdownAIChatStore: ObservableObject {
 }
 
 private enum MarkdownAIChatClient {
-    private static let chatCompletionsURL = URL(string: "https://coding.dashscope.aliyuncs.com/v1/chat/completions")!
-
     static func chat(
         apiKey: String,
         model: String,
@@ -95,44 +93,20 @@ private enum MarkdownAIChatClient {
         fileName: String,
         history: [AIChatMessage]
     ) async throws -> String {
-        var urlRequest = URLRequest(url: chatCompletionsURL)
-        urlRequest.httpMethod = "POST"
-        urlRequest.timeoutInterval = 120
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        var apiMessages: [APIChatMessage] = [
-            APIChatMessage(role: "system", content: systemPrompt(fileName: fileName, markdownContent: markdownContent))
+        var messages = [
+            BailianChatMessage(role: "system", content: systemPrompt(fileName: fileName, markdownContent: markdownContent))
         ]
 
         for msg in history {
-            apiMessages.append(APIChatMessage(role: msg.role.rawValue, content: msg.content))
+            messages.append(BailianChatMessage(role: msg.role.rawValue, content: msg.content))
         }
 
-        let body = APIChatRequest(
+        return try await BailianChatClient.chat(
+            apiKey: apiKey,
             model: model,
-            messages: apiMessages,
+            messages: messages,
             temperature: 0.7
         )
-        urlRequest.httpBody = try JSONEncoder().encode(body)
-
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw AIChatError.invalidResponse
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8)
-                ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
-            throw AIChatError.http(status: httpResponse.statusCode, message: message)
-        }
-
-        let decoded = try JSONDecoder().decode(APIChatResponse.self, from: data)
-        guard let content = decoded.choices.first?.message.content,
-              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw AIChatError.emptyResponse
-        }
-
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func systemPrompt(fileName: String, markdownContent: String) -> String {
@@ -151,45 +125,5 @@ private enum MarkdownAIChatClient {
         - 如果用户的问题与笔记内容无关，也可以正常回答。
         - 回答语言跟随用户提问的语言。
         """
-    }
-}
-
-private struct APIChatMessage: Encodable {
-    let role: String
-    let content: String
-}
-
-private struct APIChatRequest: Encodable {
-    let model: String
-    let messages: [APIChatMessage]
-    let temperature: Double
-}
-
-private struct APIChatResponse: Decodable {
-    let choices: [Choice]
-
-    struct Choice: Decodable {
-        let message: Message
-    }
-
-    struct Message: Decodable {
-        let content: String?
-    }
-}
-
-private enum AIChatError: LocalizedError {
-    case invalidResponse
-    case http(status: Int, message: String)
-    case emptyResponse
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidResponse:
-            return "Invalid server response."
-        case .http(let status, let message):
-            return "HTTP \(status): \(message)"
-        case .emptyResponse:
-            return "The model returned no text."
-        }
     }
 }

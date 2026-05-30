@@ -9,9 +9,9 @@
 ## 功能
 
 - Markdown 笔记：实时渲染、搜索、附件粘贴、LaTeX、代码块高亮、AI 局部修改与问答。
-- Shell 工作区：脚本编辑、执行记录、命令补全、可选 Benshell 命令目录集成。
-- Python 工作区：脚本编辑、Conda 环境发现、持久 REPL、脚本执行。
-- AppleScript 工作区：脚本编辑、单行命令和文件执行。
+- Shell 工作区：脚本编辑、执行记录、命令补全、可选 Benshell 命令目录集成、AI 脚本提案。
+- Python 工作区：脚本编辑、Conda 环境发现、持久 REPL、脚本执行、AI 脚本提案。
+- AppleScript 工作区：脚本编辑、单行命令、文件执行、AI 脚本提案。
 - Jobs 工作区：创建、编辑、加载、卸载 `launchd` plist，并可用 AI 生成任务配置。
 - Terminal 辅助：可从 Settings 中把工作目录直接在 Terminal 打开。
 - 统一删除：各工作区顶部垃圾桶按钮会在确认后把当前资源移到废纸篓。

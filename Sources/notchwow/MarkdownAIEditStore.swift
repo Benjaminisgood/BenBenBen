@@ -160,43 +160,20 @@ final class MarkdownAIEditStore: ObservableObject {
 }
 
 private enum MarkdownAIClient {
-    private static let chatCompletionsURL = URL(string: "https://coding.dashscope.aliyuncs.com/v1/chat/completions")!
-
     static func generateReplacement(
         apiKey: String,
         model: String,
         request: MarkdownAIEditRequest
     ) async throws -> String {
-        var urlRequest = URLRequest(url: chatCompletionsURL)
-        urlRequest.httpMethod = "POST"
-        urlRequest.timeoutInterval = 120
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let body = ChatCompletionRequest(
+        let content = try await BailianChatClient.chat(
+            apiKey: apiKey,
             model: model,
             messages: [
-                ChatMessage(role: "system", content: systemPrompt),
-                ChatMessage(role: "user", content: userPrompt(for: request))
+                BailianChatMessage(role: "system", content: systemPrompt),
+                BailianChatMessage(role: "user", content: userPrompt(for: request))
             ],
             temperature: 0.2
         )
-        urlRequest.httpBody = try JSONEncoder().encode(body)
-
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw MarkdownAIError.invalidResponse
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
-            throw MarkdownAIError.http(status: httpResponse.statusCode, message: message)
-        }
-
-        let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
-        guard let content = decoded.choices.first?.message.content,
-              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw MarkdownAIError.emptyResponse
-        }
 
         return try parseReplacement(from: content)
     }
@@ -285,47 +262,15 @@ private enum MarkdownAIClient {
     }
 }
 
-private struct ChatCompletionRequest: Encodable {
-    let model: String
-    let messages: [ChatMessage]
-    let temperature: Double
-}
-
-private struct ChatMessage: Encodable {
-    let role: String
-    let content: String
-}
-
-private struct ChatCompletionResponse: Decodable {
-    let choices: [Choice]
-
-    struct Choice: Decodable {
-        let message: Message
-    }
-
-    struct Message: Decodable {
-        let content: String?
-    }
-}
-
 private struct ReplacementEnvelope: Decodable {
     let replacement: String
 }
 
 private enum MarkdownAIError: LocalizedError {
-    case invalidResponse
-    case http(status: Int, message: String)
-    case emptyResponse
     case unparseableResponse
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse:
-            return "Invalid server response."
-        case .http(let status, let message):
-            return "HTTP \(status): \(message)"
-        case .emptyResponse:
-            return "The model returned no text."
         case .unparseableResponse:
             return "The model did not return the expected replacement JSON."
         }

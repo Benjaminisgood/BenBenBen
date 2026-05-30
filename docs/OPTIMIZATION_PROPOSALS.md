@@ -18,7 +18,7 @@
 
 完成：删除 `TerminalTaskStore`、菜单触发入口和不可达的任务自动化代码；保留 Settings 中“在 Terminal 打开目录”的轻量辅助能力。任务编排统一由 Jobs 模块承担。
 
-## P1: 可配置外部集成
+## P1: 可配置外部集成 ✅ 已完成
 
 现状：`~/Desktop/Benshell` 和 `~/miniforge3` 已经改为动态 Home，但仍是固定约定。
 
@@ -26,7 +26,7 @@
 
 这些集成确实是个人固定环境，不过让其他用户能够配置也很不错，可以有。
 
-## P1: 笔记删除语义
+## P1: 笔记删除语义 ✅ 已完成
 
 现状：Markdown 文件会自动发现并同步。旧代码里曾存在“Remove current tab”，但没有明确是关闭视图还是删除磁盘文件；本次已移除这条未使用路径。
 
@@ -55,15 +55,9 @@ Views/Shared/
 
 结构优化
 
-## P2: 统一 AI transport
+## P2: 统一 AI transport 与脚本 AI 编辑 ✅ 已完成
 
-现状：Markdown 局部修改、Markdown 问答、Launchd AI 各自实现 URLRequest、鉴权和错误处理。
-
-推荐：抽出共享 `BailianChatClient`，保留各功能自己的 prompt 和响应解析。
-
-收益：减少重复、统一错误提示、便于未来配置 endpoint 和超时。
-
-当前shell、python、applescript缺少ai实现的功能，把这个也要加上，具体方案是类似于md的聊天、编辑双模式切换，这边的脚本和自动编排则是交互输入框（如果有的话）和ai编辑切换（现在这里不需要ai提问）
+完成：抽出共享 `BailianChatClient`，统一 endpoint、鉴权、超时和错误处理。Markdown 局部修改、Markdown 问答和 Launchd AI 保留各自 prompt。Shell、Python 和 AppleScript 底部输入区均可在直接运行与 AI 编辑之间切换；AI 会先展示完整脚本提案，再由用户拒绝或应用。
 
 ## P2: 文件错误可见化
 

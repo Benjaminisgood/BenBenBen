@@ -65,7 +65,9 @@ Package.swift
 | `CondaEnvironmentStore.swift` | 发现 Conda 环境，生成 Python 启动配置。 |
 | `MarkdownAIEditStore.swift` | 调用百炼兼容接口生成 Markdown 局部替换。 |
 | `MarkdownAIChatStore.swift` | 基于当前 Markdown 内容进行问答。 |
+| `ScriptAIEditStore.swift` | 为 Shell、Python、AppleScript 生成可预览、拒绝或应用的完整脚本提案。 |
 | `LaunchdAIAgent.swift` | 根据现有脚本和任务上下文生成 plist。 |
+| `BailianChatClient.swift` | 百炼兼容接口的统一 endpoint、鉴权、超时和错误处理。 |
 
 ## 4. 默认目录
 

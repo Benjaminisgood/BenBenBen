@@ -39,6 +39,9 @@ final class NotchPanelController: NSObject {
     private let shellWorkspaceStore = ShellWorkspaceStore()
     private let launchdJobStore = LaunchdJobStore()
     private let launchdAIAgent = LaunchdAIAgent()
+    private let shellAIStore = ScriptAIEditStore()
+    private let pythonAIStore = ScriptAIEditStore()
+    private let appleScriptAIStore = ScriptAIEditStore()
     private lazy var condaStore = CondaEnvironmentStore(condaRootURL: directoryStore.condaRootDirectoryURL)
     private let pythonStore = CodeFileStore(
         rootURL: WorkspacePaths.pythonRoot,
@@ -308,6 +311,9 @@ final class NotchPanelController: NSObject {
             shellWorkspaceStore: shellWorkspaceStore,
             launchdJobStore: launchdJobStore,
             launchdAIAgent: launchdAIAgent,
+            shellAIStore: shellAIStore,
+            pythonAIStore: pythonAIStore,
+            appleScriptAIStore: appleScriptAIStore,
             condaStore: condaStore,
             directoryStore: directoryStore,
             terminalRunner: terminalRunner,

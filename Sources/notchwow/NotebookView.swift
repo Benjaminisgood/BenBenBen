@@ -26,6 +26,9 @@ struct NotebookView: View {
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
     @ObservedObject var launchdJobStore: LaunchdJobStore
     @ObservedObject var launchdAIAgent: LaunchdAIAgent
+    @ObservedObject var shellAIStore: ScriptAIEditStore
+    @ObservedObject var pythonAIStore: ScriptAIEditStore
+    @ObservedObject var appleScriptAIStore: ScriptAIEditStore
     @ObservedObject var condaStore: CondaEnvironmentStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var terminalRunner: CommandRunner
@@ -112,6 +115,9 @@ struct NotebookView: View {
                     shellWorkspaceStore: shellWorkspaceStore,
                     launchdJobStore: launchdJobStore,
                     launchdAIAgent: launchdAIAgent,
+                    shellAIStore: shellAIStore,
+                    pythonAIStore: pythonAIStore,
+                    appleScriptAIStore: appleScriptAIStore,
                     condaStore: condaStore,
                     directoryStore: directoryStore,
                     terminalRunner: terminalRunner,
@@ -1044,6 +1050,9 @@ struct WorkbenchContentView: View {
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
     @ObservedObject var launchdJobStore: LaunchdJobStore
     @ObservedObject var launchdAIAgent: LaunchdAIAgent
+    @ObservedObject var shellAIStore: ScriptAIEditStore
+    @ObservedObject var pythonAIStore: ScriptAIEditStore
+    @ObservedObject var appleScriptAIStore: ScriptAIEditStore
     @ObservedObject var condaStore: CondaEnvironmentStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var terminalRunner: CommandRunner
@@ -1070,6 +1079,8 @@ struct WorkbenchContentView: View {
                     commandStore: shellCommandStore,
                     workspaceStore: shellWorkspaceStore,
                     directoryStore: directoryStore,
+                    settingsStore: settingsStore,
+                    aiStore: shellAIStore,
                     runner: terminalRunner,
                     size: size
                 )
@@ -1078,6 +1089,8 @@ struct WorkbenchContentView: View {
                     codeStore: pythonStore,
                     condaStore: condaStore,
                     directoryStore: directoryStore,
+                    settingsStore: settingsStore,
+                    aiStore: pythonAIStore,
                     runner: pythonRunner,
                     size: size
                 )
@@ -1085,6 +1098,8 @@ struct WorkbenchContentView: View {
                 AppleScriptWorkspaceView(
                     codeStore: appleScriptStore,
                     directoryStore: directoryStore,
+                    settingsStore: settingsStore,
+                    aiStore: appleScriptAIStore,
                     runner: appleScriptRunner,
                     size: size
                 )
@@ -1165,11 +1180,112 @@ struct MarkdownSearchResultsPopover: View {
     }
 }
 
+enum ScriptToolbarMode {
+    case run
+    case ai
+}
+
+struct ScriptToolbarModeButton: View {
+    @Binding var mode: ScriptToolbarMode
+
+    var body: some View {
+        Button {
+            mode = mode == .run ? .ai : .run
+        } label: {
+            Image(systemName: mode == .run ? "sparkles" : "terminal")
+                .frame(width: 26, height: 24)
+        }
+        .buttonStyle(MarkdownToolbarButtonStyle())
+        .help(mode == .run ? "Switch to AI edit" : "Switch to command runner")
+    }
+}
+
+struct ScriptAIReviewView: View {
+    @ObservedObject var aiStore: ScriptAIEditStore
+
+    var body: some View {
+        ScrollView {
+            Text(reviewText)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.82))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .textSelection(.enabled)
+        }
+        .background(Color(red: 0.045, green: 0.047, blue: 0.055))
+    }
+
+    private var reviewText: String {
+        if let proposal = aiStore.proposal {
+            return "\(aiStore.statusText)\n\n\(proposal.replacementScript)"
+        }
+        return aiStore.statusText
+    }
+}
+
+struct ScriptAIEditorControls: View {
+    @ObservedObject var settingsStore: AppSettingsStore
+    @ObservedObject var aiStore: ScriptAIEditStore
+    let language: ScriptLanguage
+    let fileName: String
+    let script: String
+    let onApply: (String) -> Void
+
+    var body: some View {
+        TextField("Describe script edit", text: $aiStore.input)
+            .textFieldStyle(.plain)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.84))
+            .onSubmit(submit)
+
+        Button(action: submit) {
+            Image(systemName: "sparkles")
+                .frame(width: 26, height: 24)
+        }
+        .buttonStyle(MarkdownToolbarButtonStyle())
+        .disabled(!aiStore.canSubmit)
+        .help("Generate \(language.rawValue) proposal")
+
+        if let proposal = aiStore.proposal {
+            Button {
+                aiStore.rejectProposal()
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .help("Reject proposal")
+
+            Button {
+                onApply(proposal.replacementScript)
+                aiStore.acceptProposal()
+            } label: {
+                Image(systemName: "checkmark")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .help("Apply proposal")
+        }
+    }
+
+    private func submit() {
+        aiStore.submit(
+            settings: settingsStore,
+            language: language,
+            fileName: fileName,
+            script: script
+        )
+    }
+}
+
 struct PythonWorkspaceView: View {
     @ObservedObject var codeStore: CodeFileStore
     @ObservedObject var condaStore: CondaEnvironmentStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
+    @ObservedObject var settingsStore: AppSettingsStore
+    @ObservedObject var aiStore: ScriptAIEditStore
     @ObservedObject var runner: PythonReplRunner
+    @State private var toolbarMode: ScriptToolbarMode = .run
     let size: CGSize
 
     private let outputHeight: CGFloat = 132
@@ -1192,7 +1308,13 @@ struct PythonWorkspaceView: View {
                 .fill(.white.opacity(0.045))
                 .frame(width: size.width, height: separatorHeight)
 
-            OutputView(output: pythonOutputText)
+            Group {
+                if toolbarMode == .run {
+                    OutputView(output: pythonOutputText)
+                } else {
+                    ScriptAIReviewView(aiStore: aiStore)
+                }
+            }
                 .frame(width: size.width, height: outputHeight)
 
             Rectangle()
@@ -1202,6 +1324,9 @@ struct PythonWorkspaceView: View {
             PythonCommandToolbar(
                 codeStore: codeStore,
                 condaStore: condaStore,
+                settingsStore: settingsStore,
+                aiStore: aiStore,
+                toolbarMode: $toolbarMode,
                 runner: runner
             )
             .frame(width: size.width, height: toolbarHeight)
@@ -1245,6 +1370,9 @@ struct PythonWorkspaceView: View {
 struct PythonCommandToolbar: View {
     @ObservedObject var codeStore: CodeFileStore
     @ObservedObject var condaStore: CondaEnvironmentStore
+    @ObservedObject var settingsStore: AppSettingsStore
+    @ObservedObject var aiStore: ScriptAIEditStore
+    @Binding var toolbarMode: ScriptToolbarMode
     @ObservedObject var runner: PythonReplRunner
     @State private var isShowingEnvironmentPicker = false
 
@@ -1255,55 +1383,68 @@ struct PythonCommandToolbar: View {
                 isShowingEnvironmentPicker: $isShowingEnvironmentPicker
             )
 
-            Text(runner.prompt)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.52))
-                .frame(width: 24, alignment: .leading)
+            ScriptToolbarModeButton(mode: $toolbarMode)
 
-            TextField("Python", text: $runner.input)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.84))
-                .onSubmit(runInputCommand)
+            if toolbarMode == .run {
+                Text(runner.prompt)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.52))
+                    .frame(width: 24, alignment: .leading)
 
-            Button {
-                runActiveFile()
-            } label: {
-                Image(systemName: "play.fill")
-                    .frame(width: 26, height: 24)
+                TextField("Python", text: $runner.input)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.84))
+                    .onSubmit(runInputCommand)
+
+                Button {
+                    runActiveFile()
+                } label: {
+                    Image(systemName: "play.fill")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(runner.isRunning)
+                .help("Run file in selected environment")
+
+                Button {
+                    runInputCommand()
+                } label: {
+                    Image(systemName: "arrow.turn.down.left")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(runner.isRunning)
+                .help("Run Python input")
+
+                Button {
+                    runner.stop()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(!runner.isRunning)
+                .help("Stop")
+
+                Button {
+                    runner.clear()
+                } label: {
+                    Image(systemName: "clear")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .help("Clear Python output")
+            } else {
+                ScriptAIEditorControls(
+                    settingsStore: settingsStore,
+                    aiStore: aiStore,
+                    language: .python,
+                    fileName: codeStore.activeFile.fileName,
+                    script: codeStore.text,
+                    onApply: codeStore.updateText
+                )
             }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(runner.isRunning)
-            .help("Run file in selected environment")
-
-            Button {
-                runInputCommand()
-            } label: {
-                Image(systemName: "arrow.turn.down.left")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(runner.isRunning)
-            .help("Run Python input")
-
-            Button {
-                runner.stop()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(!runner.isRunning)
-            .help("Stop")
-
-            Button {
-                runner.clear()
-            } label: {
-                Image(systemName: "clear")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Clear Python output")
         }
         .padding(.horizontal, 10)
     }
@@ -1462,7 +1603,10 @@ struct AppleScriptTopToolsView: View {
 struct AppleScriptWorkspaceView: View {
     @ObservedObject var codeStore: CodeFileStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
+    @ObservedObject var settingsStore: AppSettingsStore
+    @ObservedObject var aiStore: ScriptAIEditStore
     @ObservedObject var runner: CommandRunner
+    @State private var toolbarMode: ScriptToolbarMode = .run
     let size: CGSize
 
     private let outputHeight: CGFloat = 132
@@ -1485,7 +1629,13 @@ struct AppleScriptWorkspaceView: View {
                 .fill(.white.opacity(0.045))
                 .frame(width: size.width, height: separatorHeight)
 
-            OutputView(output: appleScriptOutputText)
+            Group {
+                if toolbarMode == .run {
+                    OutputView(output: appleScriptOutputText)
+                } else {
+                    ScriptAIReviewView(aiStore: aiStore)
+                }
+            }
                 .frame(width: size.width, height: outputHeight)
 
             Rectangle()
@@ -1494,6 +1644,9 @@ struct AppleScriptWorkspaceView: View {
 
             AppleScriptCommandToolbar(
                 codeStore: codeStore,
+                settingsStore: settingsStore,
+                aiStore: aiStore,
+                toolbarMode: $toolbarMode,
                 runner: runner
             )
             .frame(width: size.width, height: toolbarHeight)
@@ -1528,6 +1681,9 @@ struct AppleScriptWorkspaceView: View {
 
 struct AppleScriptCommandToolbar: View {
     @ObservedObject var codeStore: CodeFileStore
+    @ObservedObject var settingsStore: AppSettingsStore
+    @ObservedObject var aiStore: ScriptAIEditStore
+    @Binding var toolbarMode: ScriptToolbarMode
     @ObservedObject var runner: CommandRunner
 
     var body: some View {
@@ -1536,55 +1692,68 @@ struct AppleScriptCommandToolbar: View {
                 .foregroundStyle(.white.opacity(0.54))
                 .frame(width: 15, height: 22)
 
-            Text("▶")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.52))
-                .frame(width: 16, alignment: .leading)
+            ScriptToolbarModeButton(mode: $toolbarMode)
 
-            TextField("osascript -e ...", text: $runner.input)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.84))
-                .onSubmit(runInputCommand)
+            if toolbarMode == .run {
+                Text("▶")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.52))
+                    .frame(width: 16, alignment: .leading)
 
-            Button {
-                runActiveFile()
-            } label: {
-                Image(systemName: "play.fill")
-                    .frame(width: 26, height: 24)
+                TextField("osascript -e ...", text: $runner.input)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.84))
+                    .onSubmit(runInputCommand)
+
+                Button {
+                    runActiveFile()
+                } label: {
+                    Image(systemName: "play.fill")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(runner.isRunning)
+                .help("Run file with osascript")
+
+                Button {
+                    runInputCommand()
+                } label: {
+                    Image(systemName: "arrow.turn.down.left")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(runner.isRunning)
+                .help("Run AppleScript input")
+
+                Button {
+                    runner.stop()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(!runner.isRunning)
+                .help("Stop")
+
+                Button {
+                    runner.clear()
+                } label: {
+                    Image(systemName: "clear")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .help("Clear AppleScript output")
+            } else {
+                ScriptAIEditorControls(
+                    settingsStore: settingsStore,
+                    aiStore: aiStore,
+                    language: .appleScript,
+                    fileName: codeStore.activeFile.fileName,
+                    script: codeStore.text,
+                    onApply: codeStore.updateText
+                )
             }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(runner.isRunning)
-            .help("Run file with osascript")
-
-            Button {
-                runInputCommand()
-            } label: {
-                Image(systemName: "arrow.turn.down.left")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(runner.isRunning)
-            .help("Run AppleScript input")
-
-            Button {
-                runner.stop()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(!runner.isRunning)
-            .help("Stop")
-
-            Button {
-                runner.clear()
-            } label: {
-                Image(systemName: "clear")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Clear AppleScript output")
         }
         .padding(.horizontal, 10)
     }
@@ -1760,7 +1929,10 @@ struct ShellPane: View {
     @ObservedObject var commandStore: ShellCommandStore
     @ObservedObject var workspaceStore: ShellWorkspaceStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
+    @ObservedObject var settingsStore: AppSettingsStore
+    @ObservedObject var aiStore: ScriptAIEditStore
     @ObservedObject var runner: CommandRunner
+    @State private var toolbarMode: ScriptToolbarMode = .run
     let size: CGSize
 
     private let outputHeight: CGFloat = 132
@@ -1783,7 +1955,13 @@ struct ShellPane: View {
                 .fill(.white.opacity(0.045))
                 .frame(width: size.width, height: separatorHeight)
 
-            OutputView(output: runner.output)
+            Group {
+                if toolbarMode == .run {
+                    OutputView(output: runner.output)
+                } else {
+                    ScriptAIReviewView(aiStore: aiStore)
+                }
+            }
                 .frame(width: size.width, height: outputHeight)
 
             Rectangle()
@@ -1793,6 +1971,9 @@ struct ShellPane: View {
             ShellInputToolbar(
                 commandStore: commandStore,
                 workspaceStore: workspaceStore,
+                settingsStore: settingsStore,
+                aiStore: aiStore,
+                toolbarMode: $toolbarMode,
                 runner: runner
             )
                 .frame(width: size.width, height: toolbarHeight)
@@ -1826,6 +2007,9 @@ struct ShellPane: View {
 struct ShellInputToolbar: View {
     @ObservedObject var commandStore: ShellCommandStore
     @ObservedObject var workspaceStore: ShellWorkspaceStore
+    @ObservedObject var settingsStore: AppSettingsStore
+    @ObservedObject var aiStore: ScriptAIEditStore
+    @Binding var toolbarMode: ScriptToolbarMode
     @ObservedObject var runner: CommandRunner
     @State private var isShowingCommandSuggestions = false
     @State private var isShowingToolkitPicker = false
@@ -1846,63 +2030,76 @@ struct ShellInputToolbar: View {
                 updateSuggestionVisibility(for: runner.input)
             }
 
-            Text("$")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.52))
-                .frame(width: 18, alignment: .leading)
+            ScriptToolbarModeButton(mode: $toolbarMode)
 
-            TextField("Shell command", text: $runner.input)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.9))
-                .onChange(of: runner.input) { _, nextInput in
-                    updateSuggestionVisibility(for: nextInput)
+            if toolbarMode == .run {
+                Text("$")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.52))
+                    .frame(width: 18, alignment: .leading)
+
+                TextField("Shell command", text: $runner.input)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .onChange(of: runner.input) { _, nextInput in
+                        updateSuggestionVisibility(for: nextInput)
+                    }
+                    .onSubmit {
+                        runner.run(clearsInputOnRun: true)
+                        isShowingCommandSuggestions = false
+                    }
+
+                Button {
+                    runScript()
+                    isShowingCommandSuggestions = false
+                } label: {
+                    Image(systemName: "play.fill")
+                        .frame(width: 26, height: 24)
                 }
-                .onSubmit {
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(runner.isRunning)
+                .help("Run Shell script")
+
+                Button {
                     runner.run(clearsInputOnRun: true)
                     isShowingCommandSuggestions = false
+                } label: {
+                    Image(systemName: "arrow.turn.down.left")
+                        .frame(width: 26, height: 24)
                 }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(runner.isRunning)
+                .help("Run Shell input")
 
-            Button {
-                runScript()
-                isShowingCommandSuggestions = false
-            } label: {
-                Image(systemName: "play.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(runner.isRunning)
-            .help("Run Shell script")
+                Button {
+                    runner.stop()
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(!runner.isRunning)
+                .help("Stop")
 
-            Button {
-                runner.run(clearsInputOnRun: true)
-                isShowingCommandSuggestions = false
-            } label: {
-                Image(systemName: "arrow.turn.down.left")
-                    .frame(width: 26, height: 24)
+                Button {
+                    runner.clear()
+                } label: {
+                    Image(systemName: "clear")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .help("Clear Shell output")
+            } else {
+                ScriptAIEditorControls(
+                    settingsStore: settingsStore,
+                    aiStore: aiStore,
+                    language: .shell,
+                    fileName: workspaceStore.activeWorkspace.scriptURL.lastPathComponent,
+                    script: workspaceStore.scriptText,
+                    onApply: workspaceStore.updateScriptText
+                )
             }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(runner.isRunning)
-            .help("Run Shell input")
-
-            Button {
-                runner.stop()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(!runner.isRunning)
-            .help("Stop")
-
-            Button {
-                runner.clear()
-            } label: {
-                Image(systemName: "clear")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Clear Shell output")
         }
         .padding(.horizontal, 10)
         .popover(isPresented: $isShowingCommandSuggestions, arrowEdge: .top) {
