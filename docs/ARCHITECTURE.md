@@ -34,7 +34,7 @@ Package.swift
 
 ### SwiftUI 层
 
-`NotebookView.swift` 是工作台 UI 的集中入口。当前可见模式如下：
+`NotebookView.swift` 是工作台 UI 的 composition root。各模式视图位于 `Sources/notchwow/Views/` 下的 `Markdown`、`Shell`、`Python`、`AppleScript`、`Launchd` 和 `Shared` 子目录。当前可见模式如下：
 
 | 模式 | 标题 | 核心能力 |
 | --- | --- | --- |
