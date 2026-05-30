@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  notarized-release:
+    runs-on: macos-14
+    env:
+      APP_DIR: ${{ runner.temp }}/notchwow.app
+      ZIP_PATH: ${{ runner.temp }}/notchwow.zip
+      KEYCHAIN_PATH: ${{ runner.temp }}/build.keychain-db
+      SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.BUILD_KEYCHAIN_PASSWORD }}
+        run: |
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/developer-id.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Verify project
+        run: |
+          swift build
+          swift test
+          ./Scripts/test-logic.sh
+          bash -n Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-logic.sh script/build_and_run.sh
+
+      - name: Package signed app
+        run: COPY_TO_APPLICATIONS=0 ./Scripts/package-app.sh
+
+      - name: Notarize and validate ZIP
+        run: ./Scripts/notarize-app.sh "$APP_DIR" "$ZIP_PATH"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notchwow
+          path: ${{ runner.temp }}/notchwow.zip
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$ZIP_PATH#notchwow.zip" --generate-notes

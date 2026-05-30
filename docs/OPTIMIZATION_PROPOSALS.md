@@ -38,7 +38,7 @@
 
 完成：按产品决定保留启动时自动卸载缺少本地 plist 的 `com.notchwow.*` 服务。
 
-## P2: 拆分 NotebookView
+## P2: 拆分 NotebookView ✅ 已完成
 
 现状：清理后 `NotebookView.swift` 仍承载多个模式和通用 UI。
 
@@ -63,9 +63,13 @@ Views/Shared/
 
 完成：`NoteStore`、`CodeFileStore`、`ShellWorkspaceStore` 增加统一 `lastError`，覆盖编辑保存、自动重命名、Shell 脚本写入和移到废纸篓失败。顶部工具栏显示可悬停查看详情的警告徽标。
 
-## P2: 标准测试与 CI
+## P2: 标准测试与 CI ✅ 已完成
 
-现状：当前 Command Line Tools SDK 没有 `XCTest` 或 Swift Testing 模块，仓库使用独立 smoke tests。
+完成：
+
+1. 增加标准 `notchwowTests` SwiftPM test target，供安装完整 Xcode 的 CI runner 执行。
+2. CI 执行 Debug build、Release build、标准测试、逻辑 smoke tests、Shell 语法检查和 ZIP 校验。
+3. tag 发布流水线导入 Developer ID、执行 notarization、staple、ZIP 校验并上传 GitHub Release。
 
 ## 补充功能
 当前我会让别的agents为我生成shell、py和as脚本，并且通过jobs模块的plist进行编排，shell、py和as脚本之间也会互相调用，这些脚本都存储在/Users/ben/keyoti 路径下，我该如何让agent知道如何了解这个项目，并指导如何正确的写脚本进正确的位置，并高质量的编排和自动化。
@@ -73,9 +77,3 @@ Views/Shared/
 ## 小瑕疵：
 当前md模块的todolist回车后会出现和直接点击按钮构建的缩进不一的问题
 现在shell输出的空间没有内容时空荡荡的，也加上一些默认文字吧
-
-推荐：
-
-1. 在安装完整 Xcode 的 CI runner 上增加标准 SwiftPM tests。
-2. CI 执行 Debug build、Release build、逻辑测试、Shell 语法检查。
-3. 发布流水线增加 Developer ID 签名、notarization 和 ZIP 校验。

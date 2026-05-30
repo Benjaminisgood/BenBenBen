@@ -51,7 +51,11 @@ open dist/notchwow.app
 - `launchd` plist 模板转义与 Label 解析。
 - 损坏 plist 的拒绝路径。
 
-当前 Command Line Tools SDK 不包含 `XCTest` 或 Swift Testing 模块，所以仓库使用独立 Swift runner。未来接入完整 Xcode 工具链后，可以再补标准 SwiftPM test target。
+当前 Command Line Tools SDK 不包含 `XCTest` 或 Swift Testing 模块，所以本机使用独立 Swift runner。安装完整 Xcode 的环境还可以执行标准测试：
+
+```bash
+swift test
+```
 
 ### Release 构建
 
@@ -112,7 +116,7 @@ plutil -lint dist/notchwow.app/Contents/Info.plist
 - 修改脚本后执行：
 
 ```bash
-bash -n Scripts/package-app.sh Scripts/test-logic.sh script/build_and_run.sh
+bash -n Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-logic.sh script/build_and_run.sh
 ```
 
 - 提交前执行：
@@ -120,4 +124,20 @@ bash -n Scripts/package-app.sh Scripts/test-logic.sh script/build_and_run.sh
 ```bash
 git diff --check
 git status --short
+```
+
+## 6. CI 与发布
+
+`.github/workflows/ci.yml` 会在 macOS runner 上执行 Debug、Release、`swift test`、smoke tests、Shell 语法检查和 ZIP 校验。
+
+`.github/workflows/release.yml` 会在 `v*` tag 上构建 Developer ID 签名版本、提交 notarization、staple app，并上传 `notchwow.zip`。需要配置：
+
+```text
+DEVELOPER_ID_APPLICATION_IDENTITY
+DEVELOPER_ID_APPLICATION_P12_BASE64
+DEVELOPER_ID_APPLICATION_P12_PASSWORD
+BUILD_KEYCHAIN_PASSWORD
+APPLE_ID
+APPLE_TEAM_ID
+APPLE_APP_SPECIFIC_PASSWORD
 ```

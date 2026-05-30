@@ -24,6 +24,11 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Security")
             ]
+        ),
+        .testTarget(
+            name: "notchwowTests",
+            dependencies: ["notchwow"],
+            path: "Tests/notchwowTests"
         )
     ]
 )

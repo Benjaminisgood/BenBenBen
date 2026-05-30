@@ -46,6 +46,12 @@ swift run notchwow
 ./Scripts/test-logic.sh
 ```
 
+安装完整 Xcode 后还可以执行标准 SwiftPM tests：
+
+```bash
+swift test
+```
+
 ## 打包
 
 调试运行：
