@@ -2,8 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_DIR="$ROOT_DIR/NotchNotes.app"
-APPLICATIONS_APP_DIR="/Applications/NotchNotes.app"
+APP_NAME="notchwow"
+APP_DIR="${APP_DIR:-$ROOT_DIR/dist/$APP_NAME.app}"
+APPLICATIONS_APP_DIR="${APPLICATIONS_APP_DIR:-/Applications/$APP_NAME.app}"
+COPY_TO_APPLICATIONS="${COPY_TO_APPLICATIONS:-1}"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
@@ -11,11 +13,12 @@ SOURCE_ICON="$ROOT_DIR/Resources/AppIcon.png"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 cd "$ROOT_DIR"
-swift build -c release
+swift build -c release --product "$APP_NAME"
+BUILD_BINARY="$(swift build -c release --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
-cp ".build/release/NotchNotes" "$MACOS_DIR/NotchNotes"
+cp "$BUILD_BINARY" "$MACOS_DIR/$APP_NAME"
 
 if [[ -f "$SOURCE_ICON" ]]; then
   TMP_DIR="$(mktemp -d)"
@@ -36,17 +39,17 @@ if [[ -f "$SOURCE_ICON" ]]; then
   rm -rf "$TMP_DIR"
 fi
 
-cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
+cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key>
-  <string>NotchNotes</string>
+  <string>$APP_NAME</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.oiloil.NotchNotes</string>
+  <string>io.github.oiloil.notchwow</string>
   <key>CFBundleName</key>
-  <string>NotchNotes</string>
+  <string>$APP_NAME</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>
@@ -59,6 +62,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <string>14.0</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>notchwow uses Terminal automation to focus tabs, read terminal contents, and send commands you choose to run.</string>
 </dict>
 </plist>
 PLIST
@@ -66,8 +71,9 @@ PLIST
 codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
-rm -rf "$APPLICATIONS_APP_DIR"
-cp -R "$APP_DIR" "$APPLICATIONS_APP_DIR"
-
 echo "Built $APP_DIR"
-echo "Copied $APPLICATIONS_APP_DIR"
+if [[ "$COPY_TO_APPLICATIONS" == "1" ]]; then
+  rm -rf "$APPLICATIONS_APP_DIR"
+  cp -R "$APP_DIR" "$APPLICATIONS_APP_DIR"
+  echo "Copied $APPLICATIONS_APP_DIR"
+fi

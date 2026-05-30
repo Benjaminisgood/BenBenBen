@@ -244,29 +244,24 @@ final class LaunchdJobStore: ObservableObject {
 
     // MARK: - Template
 
-    static func plistTemplate(label: String) -> String {
-        """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(label)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>/bin/zsh</string>
-                <string>-c</string>
-                <string>echo "Hello from \(label)"</string>
-            </array>
-            <key>StartInterval</key>
-            <integer>300</integer>
-            <key>StandardOutPath</key>
-            <string>/tmp/\(label).stdout.log</string>
-            <key>StandardErrorPath</key>
-            <string>/tmp/\(label).stderr.log</string>
-        </dict>
-        </plist>
-        """
+    nonisolated static func plistTemplate(label: String) -> String {
+        let plist: [String: Any] = [
+            "Label": label,
+            "ProgramArguments": ["/bin/zsh", "-c", "echo \"Hello from \(label)\""],
+            "StartInterval": 300,
+            "StandardOutPath": "/tmp/\(label).stdout.log",
+            "StandardErrorPath": "/tmp/\(label).stderr.log"
+        ]
+
+        guard let data = try? PropertyListSerialization.data(
+            fromPropertyList: plist,
+            format: .xml,
+            options: 0
+        ) else {
+            return ""
+        }
+
+        return String(decoding: data, as: UTF8.self)
     }
 
     // MARK: - Private
@@ -314,13 +309,17 @@ final class LaunchdJobStore: ObservableObject {
             .sorted { $0.modifiedAt > $1.modifiedAt }
     }
 
-    private nonisolated static func extractLabel(from plistContent: String) -> String? {
-        // Simple XML parsing: find <key>Label</key> followed by <string>...</string>
-        guard let keyRange = plistContent.range(of: "<key>Label</key>") else { return nil }
-        let afterKey = plistContent[keyRange.upperBound...]
-        guard let stringStart = afterKey.range(of: "<string>"),
-              let stringEnd = afterKey.range(of: "</string>") else { return nil }
-        let value = afterKey[stringStart.upperBound..<stringEnd.lowerBound]
+    nonisolated static func extractLabel(from plistContent: String) -> String? {
+        guard let data = plistContent.data(using: .utf8),
+              let plist = try? PropertyListSerialization.propertyList(
+                  from: data,
+                  options: [],
+                  format: nil
+              ) as? [String: Any],
+              let value = plist["Label"] as? String else {
+            return nil
+        }
+
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }

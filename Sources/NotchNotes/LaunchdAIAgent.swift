@@ -188,7 +188,7 @@ private enum LaunchdAIClient {
         - 生成标准的 macOS launchd plist XML 格式
         - Label 使用 com.notchwow. 前缀
         - plist 文件存放在 \(context.launchdPath) 目录
-        - Shell 脚本用 /bin/zsh 执行，Python 脚本用 /Users/ben/miniforge3/bin/python 执行
+        - Shell 脚本用 /bin/zsh 执行，Python 脚本用 \(WorkspacePaths.condaPythonExecutable.path) 执行
         - AppleScript 脚本用 /usr/bin/osascript 执行完整脚本路径，例如 ProgramArguments = ["/usr/bin/osascript", "\(asPath)/脚本名.applescript"]
         - 如果用户提到的脚本在可用列表中，使用完整路径
         - 使用 StartInterval（秒数）或 StartCalendarInterval（日历时间）设置调度

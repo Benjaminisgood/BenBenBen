@@ -464,9 +464,10 @@ final class TerminalTaskStore: ObservableObject {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "terminal" }
 
+        let homeDirectory = FileManager.default.homeDirectoryForCurrentUser.path
         let replacements: [(String, String)] = [
-            ("/Users/ben/Desktop/", "~/Desktop/"),
-            ("/Users/ben/", "~/")
+            ("\(homeDirectory)/Desktop/", "~/Desktop/"),
+            ("\(homeDirectory)/", "~/")
         ]
 
         var shortened = trimmed
@@ -486,29 +487,4 @@ final class TerminalTaskStore: ObservableObject {
         kill(-processGroupID, signal)
     }
 
-    private nonisolated static func workingDirectory(for pid: Int32) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        process.arguments = ["-a", "-p", "\(pid)", "-d", "cwd", "-Fn"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else { return nil }
-
-        return String(data: data, encoding: .utf8)?
-            .components(separatedBy: .newlines)
-            .first { $0.hasPrefix("n/") }
-            .map { String($0.dropFirst()) }
-    }
 }

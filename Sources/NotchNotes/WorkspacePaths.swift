@@ -1,11 +1,15 @@
 import Foundation
 
 enum WorkspacePaths {
-    static let root = URL(fileURLWithPath: "/Users/ben/keyoti", isDirectory: true)
-    static let benshellRoot = URL(fileURLWithPath: "/Users/ben/Desktop/Benshell", isDirectory: true)
+    static let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+    static let root = homeDirectory.appendingPathComponent("keyoti", isDirectory: true)
+    static let benshellRoot = homeDirectory
+        .appendingPathComponent("Desktop", isDirectory: true)
+        .appendingPathComponent("Benshell", isDirectory: true)
     static let benshellInitScript = benshellRoot.appendingPathComponent("zsh/init.zsh", isDirectory: false)
-    static let condaRoot = URL(fileURLWithPath: "/Users/ben/miniforge3", isDirectory: true)
+    static let condaRoot = homeDirectory.appendingPathComponent("miniforge3", isDirectory: true)
     static let condaExecutable = condaRoot.appendingPathComponent("bin/conda", isDirectory: false)
+    static let condaPythonExecutable = condaRoot.appendingPathComponent("bin/python", isDirectory: false)
     static let markdownRoot = root.appendingPathComponent("mds", isDirectory: true)
     static let markdownAttachments = markdownRoot.appendingPathComponent("attachments", isDirectory: true)
     static let pythonRoot = root.appendingPathComponent("pys", isDirectory: true)

@@ -37,7 +37,7 @@ final class NotchPanelController: NSObject {
     private let workbenchState = WorkbenchState()
     private let shellCommandStore = ShellCommandStore()
     private let shellWorkspaceStore = ShellWorkspaceStore()
-    private let terminalTaskStore = TerminalTaskStore()
+    private lazy var terminalTaskStore = TerminalTaskStore()
     private let launchdJobStore = LaunchdJobStore()
     private let launchdAIAgent = LaunchdAIAgent()
     private let condaStore = CondaEnvironmentStore()
@@ -303,7 +303,6 @@ final class NotchPanelController: NSObject {
             appleScriptStore: appleScriptStore,
             shellCommandStore: shellCommandStore,
             shellWorkspaceStore: shellWorkspaceStore,
-            terminalTaskStore: terminalTaskStore,
             launchdJobStore: launchdJobStore,
             launchdAIAgent: launchdAIAgent,
             condaStore: condaStore,

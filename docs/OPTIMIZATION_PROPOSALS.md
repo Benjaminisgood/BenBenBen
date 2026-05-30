@@ -1,0 +1,99 @@
+# 待讨论优化建议
+
+下面这些优化需要确认产品方向。每项都给出推荐方案，便于直接决定。
+
+## P0: 发布身份统一
+
+现状：
+
+- SwiftPM 产品和本地 bundle 使用 `notchwow`。
+- 源码 target 仍叫 `NotchNotes`。
+- `docs/index.html`、图片、ZIP、上游链接仍使用 NotchNotes。
+
+推荐：保留源码 target `NotchNotes` 以减少迁移成本，但把本仓库 README、主页、Release、bundle 全部统一为 `notchwow`。旧上游链接放到 Credits。
+
+需要确认：新 Release 是否发布在 `Benjaminisgood/NotchNotes`，以及是否继续使用 `notchwow` 作为用户可见名称。
+
+## P0: API Key 迁移到 Keychain
+
+现状：百炼 API Key 保存在 `UserDefaults`。
+
+推荐：使用 Security.framework 封装 Keychain 存取，并做一次从旧 UserDefaults 到 Keychain 的迁移；迁移成功后删除旧值。
+
+需要确认：是否允许引入 Keychain 权限与迁移代码。
+
+## P1: Terminal 进程检查器去留
+
+现状：`TerminalTaskStore` 可以发现进程组、聚焦 Terminal tab、读取快照、结束任务，但当前没有可见 UI。只有菜单中的“新建 Terminal 窗口”和“刷新 Terminal Tasks”仍会触发它。
+
+推荐二选一：
+
+1. 恢复为第六个模式 `Term`，保留 `Jobs` 作为独立模式。
+2. 删除进程检查器，仅保留 `TerminalAppBridge.openNewWindow`。
+
+我倾向方案 1，因为代码能力已经比较完整。
+
+## P1: 可配置外部集成
+
+现状：`~/Desktop/Benshell` 和 `~/miniforge3` 已经改为动态 Home，但仍是固定约定。
+
+推荐：在 Settings 增加 Benshell 根目录和 Conda 根目录字段；找不到时显示轻量提示，不影响 Markdown、AppleScript 和 Jobs 使用。
+
+需要确认：这些集成是个人固定环境，还是希望让其他用户配置。
+
+## P1: 笔记删除语义
+
+现状：Markdown 文件会自动发现并同步。旧代码里曾存在“Remove current tab”，但没有明确是关闭视图还是删除磁盘文件；本次已移除这条未使用路径。
+
+推荐：如果要恢复删除功能，使用“Move to Trash”并弹一次确认，而不是静默删除文件。单纯“关闭 tab”需要额外维护隐藏列表。
+
+需要确认：希望提供删除、移到废纸篓，还是不提供删除。
+
+## P1: 自动清理 launchd 服务
+
+现状：启动时会卸载所有缺少本地 plist 的 `com.notchwow.*` 服务。
+
+推荐：改成先列出 orphan，再由用户点击清理；避免用户移动文件后服务被自动卸载。
+
+需要确认：保留自动清理还是改为显式清理。
+
+## P2: 拆分 NotebookView
+
+现状：清理后 `NotebookView.swift` 仍承载多个模式和通用 UI。
+
+推荐按功能拆成：
+
+```text
+Views/Markdown/
+Views/Shell/
+Views/Python/
+Views/AppleScript/
+Views/Launchd/
+Views/Shared/
+```
+
+这是结构优化，不改变功能。建议在确定 Terminal 进程检查器方向后一起做。
+
+## P2: 统一 AI transport
+
+现状：Markdown 局部修改、Markdown 问答、Launchd AI 各自实现 URLRequest、鉴权和错误处理。
+
+推荐：抽出共享 `BailianChatClient`，保留各功能自己的 prompt 和响应解析。
+
+收益：减少重复、统一错误提示、便于未来配置 endpoint 和超时。
+
+## P2: 文件错误可见化
+
+现状：多个 Store 使用 `try?` 创建目录或写文件，失败时用户看不到原因。
+
+推荐：先给 `NoteStore`、`CodeFileStore`、`ShellWorkspaceStore` 增加统一的 `lastError`，在工具栏展示；再逐步覆盖附件和 transcript。
+
+## P2: 标准测试与 CI
+
+现状：当前 Command Line Tools SDK 没有 `XCTest` 或 Swift Testing 模块，仓库使用独立 smoke tests。
+
+推荐：
+
+1. 在安装完整 Xcode 的 CI runner 上增加标准 SwiftPM tests。
+2. CI 执行 Debug build、Release build、逻辑测试、Shell 语法检查。
+3. 发布流水线增加 Developer ID 签名、notarization 和 ZIP 校验。

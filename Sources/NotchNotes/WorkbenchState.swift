@@ -16,7 +16,7 @@ enum WorkbenchMode: String, CaseIterable, Identifiable {
         case .terminal: return "Shell"
         case .python: return "Py"
         case .appleScript: return "AS"
-        case .tasks: return "Term"
+        case .tasks: return "Jobs"
         }
     }
 
@@ -26,7 +26,7 @@ enum WorkbenchMode: String, CaseIterable, Identifiable {
         case .terminal: return "dollarsign.square"
         case .python: return "chevron.left.forwardslash.chevron.right"
         case .appleScript: return "command.square"
-        case .tasks: return "terminal.fill"
+        case .tasks: return "clock.arrow.2.circlepath"
         }
     }
 }

@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem(title: "Show Shell", action: #selector(showShell), keyEquivalent: "2"))
         menu.addItem(menuItem(title: "Show Python", action: #selector(showPython), keyEquivalent: "3"))
         menu.addItem(menuItem(title: "Show AppleScript", action: #selector(showAppleScript), keyEquivalent: "4"))
-        menu.addItem(menuItem(title: "Show Terminal Tasks", action: #selector(showTerminalTasks), keyEquivalent: "5"))
+        menu.addItem(menuItem(title: "Show Launchd Jobs", action: #selector(showLaunchdJobs), keyEquivalent: "5"))
 
         menu.addItem(.separator())
 
@@ -223,7 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController?.showWorkbenchMode(.python)
     }
 
-    @objc private func showTerminalTasks() {
+    @objc private func showLaunchdJobs() {
         panelController?.showWorkbenchMode(.tasks)
     }
 

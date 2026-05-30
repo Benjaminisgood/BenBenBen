@@ -15,7 +15,7 @@ final class SettingsPopoverController: NSObject, NSWindowDelegate {
     private var localOutsideClickMonitor: Any?
     private var globalOutsideClickMonitor: Any?
     private var suppressShowUntil: Date?
-    private let contentSize = NSSize(width: 400, height: 408)
+    private let contentSize = NSSize(width: 440, height: 480)
 
     init(
         settingsStore: AppSettingsStore,

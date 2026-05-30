@@ -5,3 +5,9 @@ NotchNotes.app/
 .runtime/
 .swiftpm/
 *.xcuserdatad
+dist/
+build/
+dist/notchwow.app/*
+dist/notchwow.app?/**/*
+.understand-anything/intermediate/
+.understand-anything/tmp/

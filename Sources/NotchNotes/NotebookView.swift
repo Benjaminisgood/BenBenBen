@@ -24,7 +24,6 @@ struct NotebookView: View {
     @ObservedObject var appleScriptStore: CodeFileStore
     @ObservedObject var shellCommandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
-    @ObservedObject var terminalTaskStore: TerminalTaskStore
     @ObservedObject var launchdJobStore: LaunchdJobStore
     @ObservedObject var launchdAIAgent: LaunchdAIAgent
     @ObservedObject var condaStore: CondaEnvironmentStore
@@ -84,7 +83,6 @@ struct NotebookView: View {
                         appleScriptStore: appleScriptStore,
                         shellCommandStore: shellCommandStore,
                         shellWorkspaceStore: shellWorkspaceStore,
-                        terminalTaskStore: terminalTaskStore,
                         launchdJobStore: launchdJobStore,
                         terminalRunner: terminalRunner,
                         pythonRunner: pythonRunner,
@@ -112,7 +110,6 @@ struct NotebookView: View {
                     appleScriptStore: appleScriptStore,
                     shellCommandStore: shellCommandStore,
                     shellWorkspaceStore: shellWorkspaceStore,
-                    terminalTaskStore: terminalTaskStore,
                     launchdJobStore: launchdJobStore,
                     launchdAIAgent: launchdAIAgent,
                     condaStore: condaStore,
@@ -354,7 +351,6 @@ struct WorkbenchTopToolsView: View {
     @ObservedObject var appleScriptStore: CodeFileStore
     @ObservedObject var shellCommandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
-    @ObservedObject var terminalTaskStore: TerminalTaskStore
     @ObservedObject var launchdJobStore: LaunchdJobStore
     @ObservedObject var terminalRunner: CommandRunner
     @ObservedObject var pythonRunner: PythonReplRunner
@@ -989,7 +985,6 @@ struct WorkbenchContentView: View {
     @ObservedObject var appleScriptStore: CodeFileStore
     @ObservedObject var shellCommandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
-    @ObservedObject var terminalTaskStore: TerminalTaskStore
     @ObservedObject var launchdJobStore: LaunchdJobStore
     @ObservedObject var launchdAIAgent: LaunchdAIAgent
     @ObservedObject var condaStore: CondaEnvironmentStore
@@ -1081,82 +1076,6 @@ struct MarkdownWorkspaceView: View {
         let root = directoryStore.markdownWorkingDirectoryURL
         store.useMarkdownRoot(root)
         imageStore.useMarkdownRoot(root)
-    }
-}
-
-struct MarkdownFileBar: View {
-    @ObservedObject var store: NoteStore
-    let editorInteractionState: EditorInteractionState
-    @State private var isShowingSearchResults = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.white.opacity(0.46))
-                .frame(width: 16)
-
-            TextField("filename", text: $store.searchQuery)
-                .textFieldStyle(.plain)
-                .foregroundStyle(.white.opacity(0.88))
-                .font(.system(size: 12))
-                .onChange(of: store.searchQuery) { _, query in
-                    isShowingSearchResults = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
-
-            if !store.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("\(store.filteredTabs.count)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.42))
-                    .frame(minWidth: 22, alignment: .trailing)
-            }
-
-            ActiveFileBadge(
-                title: store.activeTab.title,
-                detail: store.activeTab.filePath ?? store.activeTab.fileName,
-                systemImage: "doc.text"
-            )
-
-            Button {
-                store.syncFromDisk()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .frame(width: 24, height: 22)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Sync")
-
-            Button {
-                rememberCurrentSelection()
-                store.addTab()
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: 24, height: 22)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("New file")
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(.white.opacity(0.045))
-        )
-        .popover(isPresented: $isShowingSearchResults, arrowEdge: .bottom) {
-            MarkdownSearchResultsPopover(
-                tabs: Array(store.filteredTabs.prefix(32)),
-                activeTabID: store.activeTabID
-            ) { tab in
-                rememberCurrentSelection()
-                store.selectTab(tab.id)
-                store.searchQuery = ""
-                isShowingSearchResults = false
-            }
-        }
-    }
-
-    private func rememberCurrentSelection() {
-        guard let range = editorInteractionState.currentSelectionRange() else { return }
-        store.updateSelection(for: store.activeTabID, range: range)
     }
 }
 
@@ -1391,115 +1310,6 @@ struct PythonEnvironmentPicker: View {
                     )
                 }
                 .buttonStyle(FilePillButtonStyle(isSelected: false))
-            }
-        }
-    }
-}
-
-struct EnvironmentPicker: View {
-    @ObservedObject var condaStore: CondaEnvironmentStore
-
-    var body: some View {
-        Menu {
-            ForEach(condaStore.environments) { environment in
-                Button {
-                    condaStore.select(environment.name)
-                } label: {
-                    HStack {
-                        Text(environment.displayName)
-                        if environment.name == condaStore.selectedEnvironmentName {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-
-            if condaStore.environments.isEmpty {
-                Text(condaStore.lastError ?? "No conda environments")
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "shippingbox")
-                    .frame(width: 14)
-                Text(condaStore.selectedEnvironmentName)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.42))
-            }
-            .frame(height: 24)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(FilePillButtonStyle(isSelected: false))
-        .help("Conda environment")
-    }
-}
-
-struct CodeFileBar: View {
-    @ObservedObject var codeStore: CodeFileStore
-    @State private var isShowingSearchResults = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.white.opacity(0.46))
-                .frame(width: 16)
-
-            TextField("filename", text: $codeStore.searchQuery)
-                .textFieldStyle(.plain)
-                .foregroundStyle(.white.opacity(0.88))
-                .font(.system(size: 12))
-                .onChange(of: codeStore.searchQuery) { _, query in
-                    isShowingSearchResults = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
-
-            if !codeStore.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("\(codeStore.filteredFiles.count)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.42))
-                    .frame(minWidth: 22, alignment: .trailing)
-            }
-
-            ActiveFileBadge(
-                title: codeStore.activeFile.fileName,
-                detail: codeStore.activeFile.filePath,
-                systemImage: "curlybraces.square"
-            )
-
-            Button {
-                codeStore.syncFromDisk()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .frame(width: 24, height: 22)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Sync")
-
-            Button {
-                codeStore.addFile()
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: 24, height: 22)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("New file")
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(.white.opacity(0.045))
-        )
-        .popover(isPresented: $isShowingSearchResults, arrowEdge: .bottom) {
-            CodeSearchResultsPopover(
-                files: Array(codeStore.filteredFiles.prefix(32)),
-                activeFileID: codeStore.activeFileID
-            ) { file in
-                codeStore.selectFile(file.id)
-                codeStore.searchQuery = ""
-                isShowingSearchResults = false
             }
         }
     }
@@ -2078,82 +1888,6 @@ struct ShellToolkitPicker: View {
     }
 }
 
-struct ShellCommandCatalogView: View {
-    @ObservedObject var commandStore: ShellCommandStore
-    @ObservedObject var runner: CommandRunner
-    @Binding var query: String
-    @State private var isShowingSearchResults = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.white.opacity(0.46))
-                .frame(width: 16)
-
-            TextField("commands", text: $query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.88))
-                .onChange(of: query) { _, nextQuery in
-                    isShowingSearchResults = !nextQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
-
-            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("\(filteredCommands.count)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.42))
-                    .frame(minWidth: 22, alignment: .trailing)
-            }
-
-            ActiveFileBadge(
-                title: runner.input.isEmpty ? "Shell session" : runner.input,
-                detail: runner.storagePath,
-                systemImage: "dollarsign.square"
-            )
-
-            Button {
-                commandStore.refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .frame(width: 24, height: 22)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Refresh commands")
-
-            Button {
-                NSWorkspace.shared.open(WorkspacePaths.shellRoot)
-            } label: {
-                Image(systemName: "folder")
-                    .frame(width: 24, height: 22)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help("Open Shell storage")
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(.white.opacity(0.045))
-        )
-        .popover(isPresented: $isShowingSearchResults, arrowEdge: .bottom) {
-            ShellSearchResultsPopover(
-                commands: Array(filteredCommands.prefix(40)),
-                activeCommand: runner.input,
-                isRunning: runner.isRunning
-            ) { item in
-                runner.input = item.command
-                runner.run(item.command, clearsInputOnRun: true)
-                query = ""
-                isShowingSearchResults = false
-            }
-        }
-    }
-
-    private var filteredCommands: [ShellCommandItem] {
-        commandStore.filteredCommands(matching: query)
-    }
-}
-
 struct ShellSearchResultsPopover: View {
     let commands: [ShellCommandItem]
     let activeCommand: String
@@ -2180,69 +1914,6 @@ struct ShellSearchResultsPopover: View {
                     .help(item.command)
                 }
             }
-        }
-    }
-}
-
-struct CommandPane: View {
-    let title: String
-    let systemImage: String
-    @ObservedObject var runner: CommandRunner
-    let size: CGSize
-
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.white.opacity(0.54))
-                    .frame(width: 16)
-
-                TextField(title, text: $runner.input)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .onSubmit {
-                        runner.run(clearsInputOnRun: true)
-                    }
-
-                Button {
-                    runner.run(clearsInputOnRun: true)
-                } label: {
-                    Image(systemName: "play.fill")
-                        .frame(width: 24, height: 22)
-                }
-                .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(runner.isRunning)
-                .help("Run")
-
-                Button {
-                    runner.stop()
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .frame(width: 24, height: 22)
-                }
-                .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(!runner.isRunning)
-                .help("Stop")
-
-                Button {
-                    runner.clear()
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 24, height: 22)
-                }
-                .buttonStyle(MarkdownToolbarButtonStyle())
-                .help("Clear")
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 30)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(.white.opacity(0.045))
-            )
-
-            OutputView(output: runner.output)
-                .frame(width: size.width, height: max(size.height - 38, 120))
         }
     }
 }
@@ -2591,82 +2262,6 @@ struct MarkdownCommandLabel: View {
         case .todoList:
             Image(systemName: "checklist")
         }
-    }
-}
-
-struct TabPagerControl: View {
-    @ObservedObject var store: NoteStore
-    let editorInteractionState: EditorInteractionState
-    @Namespace private var tabAnimation
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 6) {
-            Button {
-                rememberCurrentSelection()
-                withAnimation(tabSwitchAnimation) {
-                    store.removeActiveTab()
-                }
-            } label: {
-                Image(systemName: "minus")
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(TabIconButtonStyle())
-            .disabled(store.tabs.count <= 1)
-            .help("Remove current tab")
-
-            HStack(spacing: 6) {
-                ForEach(store.tabs) { tab in
-                    let isSelected = tab.id == store.activeTabID
-                    Button {
-                        rememberCurrentSelection()
-                        withAnimation(tabSwitchAnimation) {
-                            store.selectTab(tab.id)
-                        }
-                    } label: {
-                        Capsule()
-                            .fill(isSelected ? Color.white.opacity(0.82) : Color.white.opacity(0.34))
-                            .frame(width: isSelected ? 20 : 6, height: 6)
-                            .frame(width: 26, height: 24)
-                            .contentShape(Rectangle())
-                            .matchedGeometryEffect(id: tab.id, in: tabAnimation)
-                            .animation(tabSwitchAnimation, value: isSelected)
-                    }
-                    .buttonStyle(TabDotButtonStyle(isSelected: isSelected))
-                    .help("Switch tab")
-                }
-            }
-            .frame(minWidth: 20, alignment: .center)
-            .frame(height: 28, alignment: .center)
-
-            Button {
-                rememberCurrentSelection()
-                withAnimation(tabSwitchAnimation) {
-                    store.addTab()
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(TabIconButtonStyle())
-            .help("New tab")
-        }
-        .frame(height: 28, alignment: .center)
-        .padding(.horizontal, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(.white.opacity(0.045))
-        )
-    }
-
-    private var tabSwitchAnimation: Animation {
-        .spring(response: 0.26, dampingFraction: 0.82)
-    }
-
-    private func rememberCurrentSelection() {
-        guard let range = editorInteractionState.currentSelectionRange() else { return }
-        store.updateSelection(for: store.activeTabID, range: range)
     }
 }
 
