@@ -8,19 +8,22 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "notchwow", targets: ["NotchNotes"])
+        .executable(name: "notchwow", targets: ["notchwow"])
     ],
     dependencies: [
         .package(path: "Vendor/swift-markdown-engine")
     ],
     targets: [
         .executableTarget(
-            name: "NotchNotes",
+            name: "notchwow",
             dependencies: [
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine")
             ],
-            path: "Sources/NotchNotes"
+            path: "Sources/notchwow",
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]
         )
     ]
 )

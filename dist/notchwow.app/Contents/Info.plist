@@ -5,7 +5,7 @@
   <key>CFBundleExecutable</key>
   <string>notchwow</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.oiloil.notchwow.dev</string>
+  <string>io.github.benjaminisgood.notchwow.dev</string>
   <key>CFBundleName</key>
   <string>notchwow</string>
   <key>CFBundleIconFile</key>
@@ -17,6 +17,6 @@
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>notchwow uses AppleScript automation to control apps, execute user scripts via osascript, and interact with Terminal for tab focus and command execution.</string>
+  <string>notchwow uses Terminal automation to focus tabs, read terminal contents, and send commands you choose to run.</string>
 </dict>
 </plist>

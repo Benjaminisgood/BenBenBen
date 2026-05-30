@@ -4,7 +4,7 @@
 
 `notchwow` 是一个常驻 MacBook 刘海区域的原生 macOS 工作台。鼠标移到屏幕顶部中央后，紧凑面板会展开为一个深色工具抽屉，用于快速记录 Markdown、执行 Shell、运行 Python、编辑 AppleScript，以及管理 `launchd` 任务。
 
-项目源自 [NotchNotes](https://github.com/oil-oil/NotchNotes)，当前仓库已经扩展为面向本机自动化的个人工作台。
+当前仓库已经扩展为面向本机自动化的个人工作台，并统一使用 `notchwow` 品牌。
 
 ## 功能
 
@@ -81,11 +81,9 @@ Release 打包并复制到 `/Applications/notchwow.app`：
 - [代码审查报告](docs/AUDIT_REPORT.md)
 - [待讨论优化建议](docs/OPTIMIZATION_PROPOSALS.md)
 
-## 上游项目
+## 发布页
 
-原始 NotchNotes 的下载页和静态主页仍可访问：
+项目主页和最新发布：
 
-- [NotchNotes Releases](https://github.com/oil-oil/NotchNotes/releases/latest)
-- [NotchNotes Homepage](https://oil-oil.github.io/NotchNotes/)
-
-当前仓库的 `docs/index.html` 仍是上游风格的静态营销页，尚未切换为 `notchwow` 的发布页。
+- [notchwow Releases](https://github.com/Benjaminisgood/Notchwow/releases/latest)
+- [notchwow Homepage](docs/index.html)

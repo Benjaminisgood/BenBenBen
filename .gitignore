@@ -1,7 +1,7 @@
 .build/
 .DS_Store
 DerivedData/
-NotchNotes.app/
+notchwow.app/
 .runtime/
 .swiftpm/
 *.xcuserdatad

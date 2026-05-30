@@ -4,17 +4,17 @@
 
 `notchwow` 是一个 SwiftPM 管理的 macOS 原生可执行应用。AppKit 负责屏幕、窗口层级、Terminal 自动化和事件监控；SwiftUI 负责工作台界面；vendored `swift-markdown-engine` 负责 Markdown 编辑器能力。
 
-SwiftPM 产品名为 `notchwow`，主 target 为 `NotchNotes`：
+SwiftPM 产品名和主 target 均为 `notchwow`：
 
 ```text
 Package.swift
 └── executable product: notchwow
-    └── target: NotchNotes
+    └── target: notchwow
 ```
 
 ## 2. 启动链路
 
-1. `Sources/NotchNotes/main.swift` 创建 `NSApplication` 并注册 `AppDelegate`。
+1. `Sources/notchwow/main.swift` 创建 `NSApplication` 并注册 `AppDelegate`。
 2. `AppDelegate.applicationDidFinishLaunching` 创建 `NotchPanelController`、状态栏图标和菜单。
 3. `NotchPanelController` 作为 composition root，持有状态 Store、命令 Runner、热区面板和抽屉面板。
 4. `NotchPanelController.rebuildContent` 把依赖注入 `NotebookView`。
@@ -118,7 +118,7 @@ Package.swift
 - Shell、Python、AppleScript 和 `launchd` 都会执行用户输入，应用不应接收不可信脚本。
 - Terminal 自动化会触发 macOS Apple Events 权限提示。
 - AI 功能会把笔记内容或任务上下文发送到百炼兼容接口。
-- API Key 当前保存在 `UserDefaults`，不是 Keychain。迁移建议见 `OPTIMIZATION_PROPOSALS.md`。
+- API Key 保存在 macOS Keychain；旧版 `UserDefaults` 明文会在首次启动时迁移并删除。
 - `LaunchdJobStore` 会自动清理缺少本地 plist 的 `com.notchwow.*` 已加载任务。修改此策略前需要确认产品语义。
 
 ## 7. Vendored MarkdownEngine

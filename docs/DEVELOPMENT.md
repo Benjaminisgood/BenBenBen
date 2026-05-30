@@ -6,7 +6,7 @@
 swift --version
 ```
 
-项目当前面向 macOS 14+ 和 Swift 6。主产品是 `notchwow`，不是旧名称 `NotchNotes`。
+项目当前面向 macOS 14+ 和 Swift 6。产品和 target 均为 `notchwow`。
 
 ## 2. 常用命令
 
@@ -77,7 +77,7 @@ APP_DIR=/tmp/notchwow.app COPY_TO_APPLICATIONS=0 ./Scripts/package-app.sh
 ## 3. 目录结构
 
 ```text
-Sources/NotchNotes/          应用源码
+Sources/notchwow/            应用源码
 Vendor/swift-markdown-engine 内置 Markdown 编辑器
 Resources/                   图标资源
 Scripts/                     打包和逻辑验证脚本

@@ -4,7 +4,7 @@
 
 本次检查覆盖：
 
-- `Sources/NotchNotes` 全部 Swift 源码。
+- `Sources/notchwow` 全部 Swift 源码。
 - `Vendor/swift-markdown-engine` 的结构、编译结果和 warning。
 - SwiftPM manifest、调试运行脚本、Release 打包脚本。
 - README、静态主页和 `.understand-anything` 生成缓存。
@@ -32,7 +32,7 @@
 
 ### 构建与仓库卫生
 
-- `Scripts/package-app.sh` 更新到当前产品名 `notchwow`，不再复制可能陈旧的 `.build/release/NotchNotes`。
+- `Scripts/package-app.sh` 更新到当前产品名 `notchwow`，只复制当前 SwiftPM 产物。
 - Release bundle 增加 Apple Events 用途说明。
 - 清理被提交的 `.understand-anything/intermediate` 和 `tmp` 缓存。
 - 为上述缓存增加 Git ignore 规则。
@@ -58,7 +58,7 @@ plutil -lint dist/notchwow.app/Contents/Info.plist
 
 以下项目需要产品取舍，没有自动修改：
 
-- `docs/index.html` 仍是上游 NotchNotes 的营销页和下载链接。
+- `docs/index.html` 的品牌和下载链接仍需统一到当前仓库。
 - `dist/notchwow.app` 仍在 Git 历史中被跟踪，和 `.gitignore` 目标不一致。
 - Terminal 进程检查器代码仍保留，但没有可见工作台入口。
 - 百炼 API Key 仍明文保存在 `UserDefaults`。

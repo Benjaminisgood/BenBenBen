@@ -3,8 +3,7 @@ set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="notchwow"
-LEGACY_APP_NAME="NotchNotes"
-BUNDLE_ID="io.github.oiloil.notchwow.dev"
+BUNDLE_ID="io.github.benjaminisgood.notchwow.dev"
 MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,10 +30,8 @@ stop_app() {
 }
 
 stop_app "$APP_NAME"
-stop_app "$LEGACY_APP_NAME"
 sleep 0.3
 stop_app "$APP_NAME"
-stop_app "$LEGACY_APP_NAME"
 
 swift build --product "$APP_NAME"
 BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"

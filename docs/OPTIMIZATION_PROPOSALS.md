@@ -1,37 +1,24 @@
 # 待讨论优化建议
 
-下面这些优化需要确认产品方向。每项都给出推荐方案，便于直接决定。
+下面这些优化需要确认产品方向。每完成一项就及时git
 
-## P0: 发布身份统一
+## P0: 发布身份统一 ✅ 已完成
 
-现状：
+完成：
 
-- SwiftPM 产品和本地 bundle 使用 `notchwow`。
-- 源码 target 仍叫 `NotchNotes`。
-- `docs/index.html`、图片、ZIP、上游链接仍使用 NotchNotes。
+- SwiftPM 产品、target、源码目录和本地 bundle 均统一为 `notchwow`。
+- `docs/index.html`、ZIP、bundle identifier 和仓库链接均切换到当前项目。
+- 默认偏好键切换到 `notchwow.*`，并保留一次旧键迁移。
 
-推荐：保留源码 target `NotchNotes` 以减少迁移成本，但把本仓库 README、主页、Release、bundle 全部统一为 `notchwow`。旧上游链接放到 Credits。
+## P0: API Key 迁移到 Keychain ✅ 已完成
 
-需要确认：新 Release 是否发布在 `Benjaminisgood/NotchNotes`，以及是否继续使用 `notchwow` 作为用户可见名称。
-
-## P0: API Key 迁移到 Keychain
-
-现状：百炼 API Key 保存在 `UserDefaults`。
-
-推荐：使用 Security.framework 封装 Keychain 存取，并做一次从旧 UserDefaults 到 Keychain 的迁移；迁移成功后删除旧值。
-
-需要确认：是否允许引入 Keychain 权限与迁移代码。
+完成：使用 Security.framework 封装 Keychain 存取，并做一次从旧 UserDefaults 到 Keychain 的迁移；迁移成功后删除旧值。
 
 ## P1: Terminal 进程检查器去留
 
 现状：`TerminalTaskStore` 可以发现进程组、聚焦 Terminal tab、读取快照、结束任务，但当前没有可见 UI。只有菜单中的“新建 Terminal 窗口”和“刷新 Terminal Tasks”仍会触发它。
 
-推荐二选一：
-
-1. 恢复为第六个模式 `Term`，保留 `Jobs` 作为独立模式。
-2. 删除进程检查器，仅保留 `TerminalAppBridge.openNewWindow`。
-
-我倾向方案 1，因为代码能力已经比较完整。
+不再需要Terminal模块，完全迁移成jobs这个最终方案
 
 ## P1: 可配置外部集成
 
@@ -39,15 +26,15 @@
 
 推荐：在 Settings 增加 Benshell 根目录和 Conda 根目录字段；找不到时显示轻量提示，不影响 Markdown、AppleScript 和 Jobs 使用。
 
-需要确认：这些集成是个人固定环境，还是希望让其他用户配置。
+这些集成确实是个人固定环境，不过让其他用户能够配置也很不错，可以有。
 
 ## P1: 笔记删除语义
 
 现状：Markdown 文件会自动发现并同步。旧代码里曾存在“Remove current tab”，但没有明确是关闭视图还是删除磁盘文件；本次已移除这条未使用路径。
 
-推荐：如果要恢复删除功能，使用“Move to Trash”并弹一次确认，而不是静默删除文件。单纯“关闭 tab”需要额外维护隐藏列表。
+恢复删除功能，使用“Move to Trash”并弹一次确认，而不是静默删除文件。单纯“关闭 tab”需要额外维护隐藏列表。提供删除、移到废纸篓，还是不提供删除。
 
-需要确认：希望提供删除、移到废纸篓，还是不提供删除。
+并且所有的模块都支持删除到废纸篓，并且UI上统一使用当前垃圾桶标识的位置按钮，至于当前的清空output等改到下面运行、暂停的按钮旁边，模块UI尽量统一。
 
 ## P1: 自动清理 launchd 服务
 
@@ -55,7 +42,7 @@
 
 推荐：改成先列出 orphan，再由用户点击清理；避免用户移动文件后服务被自动卸载。
 
-需要确认：保留自动清理还是改为显式清理。
+保留自动清理即可
 
 ## P2: 拆分 NotebookView
 
@@ -72,7 +59,7 @@ Views/Launchd/
 Views/Shared/
 ```
 
-这是结构优化，不改变功能。建议在确定 Terminal 进程检查器方向后一起做。
+结构优化
 
 ## P2: 统一 AI transport
 
@@ -81,6 +68,8 @@ Views/Shared/
 推荐：抽出共享 `BailianChatClient`，保留各功能自己的 prompt 和响应解析。
 
 收益：减少重复、统一错误提示、便于未来配置 endpoint 和超时。
+
+当前applescript缺少ai实现的功能，把这个也要加上。
 
 ## P2: 文件错误可见化
 
@@ -91,6 +80,12 @@ Views/Shared/
 ## P2: 标准测试与 CI
 
 现状：当前 Command Line Tools SDK 没有 `XCTest` 或 Swift Testing 模块，仓库使用独立 smoke tests。
+
+## 补充功能
+当前我会让别的agents为我生成shell、py和as脚本，并且通过jobs模块的plist进行编排，shell、py和as脚本之间也会互相调用，这些脚本都存储在/Users/ben/keyoti 路径下，我该如何让agent知道如何了解这个项目，并指导如何正确的写脚本进正确的位置，并高质量的编排和自动化。
+
+## 小瑕疵：
+当前md模块的todolist回车后会出现和直接点击按钮构建的缩进不一的问题
 
 推荐：
 
