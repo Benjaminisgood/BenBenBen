@@ -409,6 +409,10 @@ struct MarkdownTopToolsView: View {
                 systemImage: "doc.text"
             )
 
+            if let error = store.lastError {
+                StoreErrorBadge(message: error)
+            }
+
             ToolbarSearchField(
                 placeholder: "md",
                 query: $store.searchQuery,
@@ -483,6 +487,10 @@ struct PythonTopToolsView: View {
                 systemImage: "curlybraces.square"
             )
 
+            if let error = codeStore.lastError {
+                StoreErrorBadge(message: error)
+            }
+
             ToolbarSearchField(
                 placeholder: "py",
                 query: $codeStore.searchQuery,
@@ -549,6 +557,10 @@ struct ShellTopToolsView: View {
                 detail: workspaceStore.activeWorkspace.detail,
                 systemImage: "dollarsign.square"
             )
+
+            if let error = workspaceStore.lastError {
+                StoreErrorBadge(message: error)
+            }
 
             ToolbarSearchField(
                 placeholder: "workspace",
@@ -1547,6 +1559,10 @@ struct AppleScriptTopToolsView: View {
                 systemImage: "command.square"
             )
 
+            if let error = codeStore.lastError {
+                StoreErrorBadge(message: error)
+            }
+
             ToolbarSearchField(
                 placeholder: "as",
                 query: $codeStore.searchQuery,
@@ -1844,6 +1860,22 @@ struct ActiveFileBadge: View {
                 .fill(.white.opacity(0.035))
         )
         .help(detail)
+    }
+}
+
+struct StoreErrorBadge: View {
+    let message: String
+
+    var body: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.orange.opacity(0.9))
+            .frame(width: 22, height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(.orange.opacity(0.10))
+            )
+            .help(message)
     }
 }
 

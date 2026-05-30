@@ -21,6 +21,7 @@ final class ShellWorkspaceStore: ObservableObject {
     @Published private(set) var activeWorkspaceID: String
     @Published private(set) var scriptText: String
     @Published var searchQuery = ""
+    @Published private(set) var lastError: String?
 
     private static let activeWorkspaceKey = "notchwow.activeShellWorkspace"
     private static let legacyActiveWorkspaceKey = "notchNotes.activeShellWorkspace"
@@ -69,8 +70,13 @@ final class ShellWorkspaceStore: ObservableObject {
             workspace.transcriptURL,
             workspace.inputURL,
             workspace.scriptURL
-        ]) { [weak self] _, _ in
+        ]) { [weak self] _, error in
             Task { @MainActor in
+                if let error {
+                    self?.lastError = "Move to Trash failed: \(error.localizedDescription)"
+                    return
+                }
+                self?.lastError = nil
                 self?.syncFromDisk()
             }
         }
@@ -85,7 +91,12 @@ final class ShellWorkspaceStore: ObservableObject {
 
     func updateScriptText(_ nextText: String) {
         scriptText = nextText
-        Self.writeScriptText(nextText, for: activeWorkspace)
+        do {
+            try Self.writeScriptText(nextText, for: activeWorkspace)
+            lastError = nil
+        } catch {
+            lastError = "Could not save Shell script: \(error.localizedDescription)"
+        }
     }
 
     func syncFromDisk() {
@@ -204,12 +215,12 @@ final class ShellWorkspaceStore: ObservableObject {
             ?? ""
     }
 
-    private nonisolated static func writeScriptText(_ text: String, for workspace: ShellWorkspace) {
-        try? FileManager.default.createDirectory(
+    private nonisolated static func writeScriptText(_ text: String, for workspace: ShellWorkspace) throws {
+        try FileManager.default.createDirectory(
             at: workspace.scriptURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try? text.write(to: workspace.scriptURL, atomically: true, encoding: .utf8)
+        try text.write(to: workspace.scriptURL, atomically: true, encoding: .utf8)
     }
 
     private nonisolated static func ensureFileExists(at url: URL, defaultText: String) {

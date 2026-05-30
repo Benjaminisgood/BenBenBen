@@ -22,6 +22,7 @@ final class CodeFileStore: ObservableObject {
     @Published private(set) var files: [CodeFile]
     @Published private(set) var activeFileID: UUID
     @Published var searchQuery = ""
+    @Published private(set) var lastError: String?
 
     private let rootURL: URL
     private let fileExtension: String
@@ -36,7 +37,12 @@ final class CodeFileStore: ObservableObject {
         self.fileExtension = fileExtension
         self.defaultTemplate = defaultTemplate
         self.commentPrefix = commentPrefix
-        try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        var initializationError: String?
+        do {
+            try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        } catch {
+            initializationError = "Could not create script directory: \(error.localizedDescription)"
+        }
 
         let loadedFiles = Self.availableFiles(
             from: rootURL,
@@ -46,6 +52,7 @@ final class CodeFileStore: ObservableObject {
         )
         files = loadedFiles
         activeFileID = loadedFiles[0].id
+        lastError = initializationError
         startDiskSync()
     }
 
@@ -81,12 +88,20 @@ final class CodeFileStore: ObservableObject {
         files.append(file)
         activeFileID = file.id
         searchQuery = ""
+        if !FileManager.default.fileExists(atPath: file.filePath) {
+            lastError = "Could not create \(file.fileName)"
+        }
     }
 
     func moveActiveFileToTrash() {
         let url = activeFile.fileURL
-        NSWorkspace.shared.recycle([url]) { [weak self] _, _ in
+        NSWorkspace.shared.recycle([url]) { [weak self] _, error in
             Task { @MainActor in
+                if let error {
+                    self?.lastError = "Move to Trash failed: \(error.localizedDescription)"
+                    return
+                }
+                self?.lastError = nil
                 self?.syncFromDisk()
             }
         }
@@ -148,13 +163,23 @@ final class CodeFileStore: ObservableObject {
             )
             if desiredURL.standardizedFileURL.path != file.fileURL.standardizedFileURL.path,
                FileManager.default.fileExists(atPath: file.filePath) {
-                try? FileManager.default.moveItem(at: file.fileURL, to: desiredURL)
-                file.filePath = desiredURL.path
-                files[activeIndex] = file
+                do {
+                    try FileManager.default.moveItem(at: file.fileURL, to: desiredURL)
+                    file.filePath = desiredURL.path
+                    files[activeIndex] = file
+                } catch {
+                    lastError = "Could not rename script file: \(error.localizedDescription)"
+                    return
+                }
             }
         }
 
-        try? file.text.write(to: file.fileURL, atomically: true, encoding: .utf8)
+        do {
+            try file.text.write(to: file.fileURL, atomically: true, encoding: .utf8)
+            lastError = nil
+        } catch {
+            lastError = "Could not save script file: \(error.localizedDescription)"
+        }
     }
 
     /// Extracts a title from the first comment line matching the given prefix, skipping shebang lines.

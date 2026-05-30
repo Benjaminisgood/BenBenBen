@@ -51,6 +51,7 @@ final class NoteStore: ObservableObject {
     @Published private(set) var tabs: [NoteTab]
     @Published private(set) var activeTabID: UUID
     @Published var searchQuery = ""
+    @Published private(set) var lastError: String?
 
     private static let textKey = "notchwow.text"
     private static let legacyTextKey = "notchNotes.text"
@@ -119,8 +120,13 @@ final class NoteStore: ObservableObject {
 
     func moveActiveTabToTrash() {
         guard let url = activeTab.fileURL else { return }
-        NSWorkspace.shared.recycle([url]) { [weak self] _, _ in
+        NSWorkspace.shared.recycle([url]) { [weak self] _, error in
             Task { @MainActor in
+                if let error {
+                    self?.lastError = "Move to Trash failed: \(error.localizedDescription)"
+                    return
+                }
+                self?.lastError = nil
                 self?.syncFromDisk()
             }
         }
@@ -231,7 +237,12 @@ final class NoteStore: ObservableObject {
         var tab = tabs[activeIndex]
         let currentURL = tab.fileURL
         let directoryURL = currentURL?.deletingLastPathComponent() ?? markdownRoot
-        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        } catch {
+            lastError = "Could not create Markdown directory: \(error.localizedDescription)"
+            return
+        }
 
         let desiredURL: URL
         if allowRename, let title = NoteTab.firstHeadingTitle(in: tab.text) {
@@ -254,15 +265,22 @@ final class NoteStore: ObservableObject {
         if let currentURL,
            currentURL.standardizedFileURL.path != desiredURL.standardizedFileURL.path,
            FileManager.default.fileExists(atPath: currentURL.path) {
-            try? FileManager.default.moveItem(at: currentURL, to: desiredURL)
+            do {
+                try FileManager.default.moveItem(at: currentURL, to: desiredURL)
+            } catch {
+                lastError = "Could not rename Markdown file: \(error.localizedDescription)"
+                return
+            }
         }
 
         do {
             try tab.text.write(to: desiredURL, atomically: true, encoding: .utf8)
             tab.filePath = desiredURL.path
             tabs[activeIndex] = tab
+            lastError = nil
         } catch {
             tabs[activeIndex] = tab
+            lastError = "Could not save Markdown file: \(error.localizedDescription)"
         }
     }
 

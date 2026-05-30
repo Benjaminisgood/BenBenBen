@@ -59,11 +59,9 @@ Views/Shared/
 
 完成：抽出共享 `BailianChatClient`，统一 endpoint、鉴权、超时和错误处理。Markdown 局部修改、Markdown 问答和 Launchd AI 保留各自 prompt。Shell、Python 和 AppleScript 底部输入区均可在直接运行与 AI 编辑之间切换；AI 会先展示完整脚本提案，再由用户拒绝或应用。
 
-## P2: 文件错误可见化
+## P2: 文件错误可见化 ✅ 已完成
 
-现状：多个 Store 使用 `try?` 创建目录或写文件，失败时用户看不到原因。
-
-推荐：先给 `NoteStore`、`CodeFileStore`、`ShellWorkspaceStore` 增加统一的 `lastError`，在工具栏展示；再逐步覆盖附件和 transcript。
+完成：`NoteStore`、`CodeFileStore`、`ShellWorkspaceStore` 增加统一 `lastError`，覆盖编辑保存、自动重命名、Shell 脚本写入和移到废纸篓失败。顶部工具栏显示可悬停查看详情的警告徽标。
 
 ## P2: 标准测试与 CI
 

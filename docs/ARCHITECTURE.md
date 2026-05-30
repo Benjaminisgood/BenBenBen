@@ -118,6 +118,7 @@ Package.swift
 
 - Shell、Python、AppleScript 和 `launchd` 都会执行用户输入，应用不应接收不可信脚本。
 - 工作区删除操作统一使用 macOS 废纸篓，并在 UI 中二次确认。
+- Markdown、脚本和 Shell workspace 的磁盘写入错误会通过顶部警告徽标反馈给用户。
 - 从 Settings 在 Terminal 打开目录会触发 macOS Apple Events 权限提示。
 - AI 功能会把笔记内容或任务上下文发送到百炼兼容接口。
 - API Key 保存在 macOS Keychain；旧版 `UserDefaults` 明文会在首次启动时迁移并删除。
