@@ -34,6 +34,7 @@ Before editing scripts or plist files, read `~/Desktop/notchwow/docs/AUTOMATION_
 - Scheduled jobs must not rewrite papis metadata, commit or push repositories, delete files, or send chat messages automatically.
 - Treat GUI automation as draft-only unless the user explicitly requests the final irreversible action.
 - For daily artifacts, check the dated directory or filename first. If today's artifact is absent, build it immediately; otherwise keep reruns idempotent.
+- Write every human-readable AI or automation report as `.html`. Use JSON only for machine state; do not use Markdown as the final report format.
 - Updating a plist does not reload an already running job. Do not run `launchctl bootstrap` or `bootout` without explicit approval.
 
 ## Validation
