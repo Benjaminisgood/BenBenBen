@@ -194,6 +194,72 @@ final class LaunchdJobStore: ObservableObject {
         refresh()
     }
 
+    func loadAllJobs() {
+        let pendingJobs = jobs.filter { !$0.isLoaded }
+        guard !pendingJobs.isEmpty else {
+            setMessage("All jobs already loaded")
+            appendLog("▶ All jobs already loaded")
+            return
+        }
+
+        let uid = getuid()
+        let domain = "gui/\(uid)"
+        var loadedCount = 0
+        var failedLabels: [String] = []
+
+        for job in pendingJobs {
+            let result = Self.runLaunchctl(["bootstrap", domain, job.plistURL.path])
+            if result.success || result.output.contains("already bootstrapped") || result.output.contains("service already loaded") {
+                loadedCount += 1
+            } else {
+                failedLabels.append(job.label)
+                appendLog("⚠ Load failed [\(job.label)]: \(result.output)")
+            }
+        }
+
+        if failedLabels.isEmpty {
+            setMessage("Loaded \(loadedCount) jobs")
+            appendLog("▶ Loaded \(loadedCount) jobs")
+        } else {
+            setMessage("Loaded \(loadedCount), failed \(failedLabels.count)", isError: true)
+            appendLog("⚠ Loaded \(loadedCount), failed: \(failedLabels.joined(separator: ", "))")
+        }
+        refresh()
+    }
+
+    func unloadAllLoadedJobs() {
+        let activeJobs = loadedJobs
+        guard !activeJobs.isEmpty else {
+            setMessage("No loaded jobs")
+            appendLog("⏹ No loaded jobs")
+            return
+        }
+
+        let uid = getuid()
+        var unloadedCount = 0
+        var failedLabels: [String] = []
+
+        for job in activeJobs {
+            let target = "gui/\(uid)/\(job.label)"
+            let result = Self.runLaunchctl(["bootout", target])
+            if result.success {
+                unloadedCount += 1
+            } else {
+                failedLabels.append(job.label)
+                appendLog("⚠ Unload failed [\(job.label)]: \(result.output)")
+            }
+        }
+
+        if failedLabels.isEmpty {
+            setMessage("Unloaded \(unloadedCount) jobs")
+            appendLog("⏹ Unloaded \(unloadedCount) jobs")
+        } else {
+            setMessage("Unloaded \(unloadedCount), failed \(failedLabels.count)", isError: true)
+            appendLog("⚠ Unloaded \(unloadedCount), failed: \(failedLabels.joined(separator: ", "))")
+        }
+        refresh()
+    }
+
     func moveJobToTrash(_ job: LaunchdJob) {
         if job.isLoaded {
             let uid = getuid()

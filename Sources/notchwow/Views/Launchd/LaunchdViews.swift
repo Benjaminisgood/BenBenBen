@@ -177,6 +177,28 @@ struct LaunchdInputToolbar: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            TopToolbarButtonStrip {
+                Button {
+                    jobStore.unloadAllLoadedJobs()
+                } label: {
+                    Image(systemName: "pause.fill")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(jobStore.loadedJobs.isEmpty)
+                .help("Pause all automation jobs")
+
+                Button {
+                    jobStore.loadAllJobs()
+                } label: {
+                    Image(systemName: "play.fill")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(jobStore.jobs.isEmpty || jobStore.jobs.allSatisfy(\.isLoaded))
+                .help("Start all automation jobs")
+            }
+
             LaunchdLoadedJobPicker(
                 jobStore: jobStore,
                 isShowingPicker: $isShowingLoadedPicker
