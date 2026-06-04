@@ -255,15 +255,11 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         if textView.textContainerInset != desiredTextInset {
             textView.textContainerInset = desiredTextInset
         }
-        // Refresh services/theme when the embedder hands us a new configuration
-        // (e.g. when the available wiki-link targets change). Cheap pointer-/
-        // value-based comparison; full equality isn't required because the
-        // embedder is the source of truth.
-        if context.coordinator.configuration.services.images.fingerprint()
-            != configuration.services.images.fingerprint() {
-            context.coordinator.configuration.services = configuration.services
-            (nsView.documentView as? NativeTextView)?.configuration.services = configuration.services
-        }
+        // Refresh app-supplied services every pass. Link targets, image caches,
+        // and renderers can change without the document text changing.
+        context.coordinator.configuration.services = configuration.services
+        (nsView.documentView as? NativeTextView)?.configuration.services = configuration.services
+        context.coordinator.onLinkClick = onLinkClick
         textView.isEditable = isEditable
         textView.isSelectable = isEditable
         textView.insertionPointColor = isEditable ? context.coordinator.configuration.theme.bodyText : .clear

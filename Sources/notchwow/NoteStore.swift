@@ -88,6 +88,10 @@ final class NoteStore: ObservableObject {
         tabs[activeIndex]
     }
 
+    var wikiLinkResolver: MarkdownNoteWikiLinkResolver {
+        MarkdownNoteWikiLinkResolver(index: MarkdownNoteLinkIndex(tabs: tabs, markdownRoot: markdownRoot))
+    }
+
     var filteredTabs: [NoteTab] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return tabs }
@@ -135,6 +139,21 @@ final class NoteStore: ObservableObject {
     func selectTab(_ id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
         activeTabID = id
+        save()
+    }
+
+    func openWikiLinkTarget(_ rawTarget: String) {
+        let displayName = MarkdownNoteLinkIndex.displayName(from: rawTarget)
+        let index = MarkdownNoteLinkIndex(tabs: tabs, markdownRoot: markdownRoot)
+        guard let target = index.target(for: rawTarget),
+              let linkedTab = tabs.first(where: { $0.filePath == target.filePath }) else {
+            lastError = "Markdown note not found: \(displayName)"
+            return
+        }
+
+        activeTabID = linkedTab.id
+        searchQuery = ""
+        lastError = nil
         save()
     }
 

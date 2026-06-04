@@ -581,11 +581,19 @@ struct MarkdownNoteEditor: View {
             fontSize: 15,
             documentId: store.activeTabID.uuidString,
             isEditable: true,
-            onPasteImage: savePastedImage
+            onPasteImage: savePastedImage,
+            onLinkClick: openWikiLink
         )
         .background {
             EditorFocusBinder(state: editorInteractionState)
         }
+    }
+
+    private func openWikiLink(_ target: String) {
+        if let range = editorInteractionState.currentSelectionRange() {
+            store.updateSelection(for: store.activeTabID, range: range)
+        }
+        store.openWikiLinkTarget(target)
     }
 
     private func savePastedImage(_ pasteboard: NSPasteboard) -> String? {
@@ -609,6 +617,7 @@ struct MarkdownNoteEditor: View {
         )
 
         let services = MarkdownEditorServices(
+            wikiLinks: store.wikiLinkResolver,
             images: imageStore,
             latex: Self.latexRenderer
         )

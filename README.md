@@ -8,7 +8,7 @@
 
 ## 功能
 
-- Markdown 笔记：实时渲染、搜索、附件粘贴、LaTeX、代码块高亮、AI 局部修改与问答。
+- Markdown 笔记：实时渲染、搜索、`[[笔记标题]]` 跳转、附件粘贴、LaTeX、代码块高亮、AI 局部修改与问答。
 - Shell 工作区：脚本编辑、执行记录、命令补全、可选 Benshell 命令目录集成、AI 脚本提案。
 - Python 工作区：脚本编辑、Conda 环境发现、持久 REPL、脚本执行、AI 脚本提案。
 - AppleScript 工作区：脚本编辑、单行命令、文件执行、AI 脚本提案。
@@ -85,6 +85,7 @@ Release 打包并复制到 `/Applications/notchwow.app`：
 
 - [架构说明](docs/ARCHITECTURE.md)
 - [开发与验证](docs/DEVELOPMENT.md)
+- [notchwow Markdown 语法（AI Agent 版）](docs/NOTCHWOW_MARKDOWN_SYNTAX_FOR_AGENTS.md)
 - [自动化 Agent 指南](docs/AUTOMATION_AGENT_GUIDE.md)
 - [代码审查报告](docs/AUDIT_REPORT.md)
 - [待讨论优化建议](docs/OPTIMIZATION_PROPOSALS.md)
