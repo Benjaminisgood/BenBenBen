@@ -194,6 +194,28 @@ enum MarkdownTokenizer {
             }
         }
 
+        // GitHub-style pipe tables:
+        //
+        // | Header | Header |
+        // | ------ | :----: |
+        // | Cell   | Cell   |
+        let blockRanges = tokens.compactMap { token -> NSRange? in
+            switch token.kind {
+            case .codeBlock, .blockLatex:
+                return token.range
+            default:
+                return nil
+            }
+        }
+        for table in MarkdownTableParser.parseTables(in: text, excluding: blockRanges) {
+            tokens.append(MarkdownToken(
+                kind: .table,
+                range: table.range,
+                contentRange: table.range,
+                markerRanges: []
+            ))
+        }
+
         // Inline code `code`
         for match in inlineCodeRegex.matches(in: text, options: [], range: fullRange) {
             let full = match.range(at: 0)
@@ -216,7 +238,7 @@ enum MarkdownTokenizer {
                 let full = match.range(at: 0)
                 let content = match.range(at: 1)
                 let isInsideBlock = tokens.contains {
-                    ($0.kind == .codeBlock || $0.kind == .blockLatex) &&
+                    ($0.kind == .codeBlock || $0.kind == .blockLatex || $0.kind == .table) &&
                     NSIntersectionRange($0.range, full).length > 0
                 }
                 if isInsideBlock { continue }
@@ -236,7 +258,7 @@ enum MarkdownTokenizer {
             let full = match.range(at: 0)
             let isInsideOpaqueToken = tokens.contains { token in
                 switch token.kind {
-                case .codeBlock, .inlineCode, .blockLatex, .inlineLatex:
+                case .codeBlock, .inlineCode, .blockLatex, .inlineLatex, .table:
                     return range(token.range, contains: full)
                 default:
                     return false
@@ -286,6 +308,10 @@ enum MarkdownTokenizer {
         let mathyPattern = #"[\\\^\_\{\}=+\-*/<>]"#
         let mathyRegex = try? NSRegularExpression(pattern: mathyPattern, options: [])
         let mathyMatches = mathyRegex?.numberOfMatches(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)) ?? 0
+        let unicodeMathMatches = trimmed.unicodeScalars.filter(isUnicodeMathScalar).count
+        if unicodeMathMatches > 0 {
+            return true
+        }
         if mathyMatches == 0 {
             if trimmed.count <= 3 {
                 let isSimpleSingleLetter = trimmed.range(of: #"^[A-Za-z]{1,3}$"#, options: .regularExpression) != nil
@@ -304,6 +330,21 @@ enum MarkdownTokenizer {
         }
         
         return true
+    }
+
+    private static func isUnicodeMathScalar(_ scalar: UnicodeScalar) -> Bool {
+        switch scalar.value {
+        case 0x0370...0x03FF, // Greek and Coptic
+             0x1D400...0x1D7FF, // Mathematical alphanumeric symbols
+             0x2190...0x21FF, // Arrows
+             0x2200...0x22FF, // Mathematical operators
+             0x27C0...0x27EF, // Miscellaneous mathematical symbols-A
+             0x2980...0x29FF, // Miscellaneous mathematical symbols-B
+             0x2A00...0x2AFF: // Supplemental mathematical operators
+            return true
+        default:
+            return false
+        }
     }
 
     private static func range(_ outer: NSRange, contains inner: NSRange) -> Bool {

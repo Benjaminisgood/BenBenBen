@@ -79,6 +79,15 @@ print("hello")
 ```
 ````
 
+GitHub-style pipe tables are supported:
+
+```markdown
+| Metric | Value | Trend |
+| :----- | ----: | :---: |
+| Focus  | 92%   | Up    |
+| Bugs   | 3     | Down  |
+```
+
 ## Math
 
 Inline math:

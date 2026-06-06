@@ -123,11 +123,13 @@ extension NativeTextViewCoordinator {
         var blockLatexTokens: [MarkdownToken] = []
         var wikiLinkTokens: [MarkdownToken] = []
         var imageEmbedTokens: [MarkdownToken] = []
+        var tableTokens: [MarkdownToken] = []
 
         codeTokens.reserveCapacity(tokens.count / 2)
         latexTokens.reserveCapacity(tokens.count / 4)
         blockLatexTokens.reserveCapacity(tokens.count / 4)
         wikiLinkTokens.reserveCapacity(tokens.count / 4)
+        tableTokens.reserveCapacity(tokens.count / 8)
 
         for token in tokens {
             switch token.kind {
@@ -141,6 +143,8 @@ extension NativeTextViewCoordinator {
                 wikiLinkTokens.append(token)
             case .imageEmbed:
                 imageEmbedTokens.append(token)
+            case .table:
+                tableTokens.append(token)
             default:
                 break
             }
@@ -152,7 +156,8 @@ extension NativeTextViewCoordinator {
             latexTokens: latexTokens,
             blockLatexTokens: blockLatexTokens,
             wikiLinkTokens: wikiLinkTokens,
-            imageEmbedTokens: imageEmbedTokens
+            imageEmbedTokens: imageEmbedTokens,
+            tableTokens: tableTokens
         )
         cachedParsedText = text
         cachedParsedDocument = parsed
@@ -200,7 +205,7 @@ extension NativeTextViewCoordinator {
             let token = tokens[idx]
             paragraphs.append(text.paragraphRange(for: token.range))
 
-            if token.kind == .codeBlock || token.kind == .blockLatex {
+            if token.kind == .codeBlock || token.kind == .blockLatex || token.kind == .table {
                 for markerRange in token.markerRanges {
                     paragraphs.append(text.paragraphRange(for: markerRange))
                 }

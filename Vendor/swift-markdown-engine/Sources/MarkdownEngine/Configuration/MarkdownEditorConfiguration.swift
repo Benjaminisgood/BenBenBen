@@ -36,6 +36,7 @@ public struct MarkdownEditorConfiguration: Sendable {
     public var imageEmbed: ImageEmbedStyle
     public var blockLatex: BlockLatexStyle
     public var inlineLatex: InlineLatexStyle
+    public var table: TableStyle
     public var checkbox: CheckboxStyle
     public var link: LinkStyle
     public var paragraph: ParagraphStyle
@@ -56,6 +57,7 @@ public struct MarkdownEditorConfiguration: Sendable {
         imageEmbed: ImageEmbedStyle = .default,
         blockLatex: BlockLatexStyle = .default,
         inlineLatex: InlineLatexStyle = .default,
+        table: TableStyle = .default,
         checkbox: CheckboxStyle = .default,
         link: LinkStyle = .default,
         paragraph: ParagraphStyle = .default,
@@ -75,6 +77,7 @@ public struct MarkdownEditorConfiguration: Sendable {
         self.imageEmbed = imageEmbed
         self.blockLatex = blockLatex
         self.inlineLatex = inlineLatex
+        self.table = table
         self.checkbox = checkbox
         self.link = link
         self.paragraph = paragraph
@@ -334,6 +337,45 @@ public struct InlineLatexStyle: Sendable {
     public init() { self.placeholder = () }
 
     public static let `default` = InlineLatexStyle()
+}
+
+// MARK: - Tables
+
+/// Layout tuning for GitHub-style pipe tables.
+public struct TableStyle: Sendable {
+    public var fallbackMaxWidth: CGFloat
+    public var minimumColumnWidth: CGFloat
+    public var maximumColumnWidth: CGFloat
+    public var cellHorizontalPadding: CGFloat
+    public var cellVerticalPadding: CGFloat
+    public var paragraphSpacingBefore: CGFloat
+    public var paragraphSpacing: CGFloat
+    public var cornerRadius: CGFloat
+    public var borderWidth: CGFloat
+
+    public init(
+        fallbackMaxWidth: CGFloat = 720,
+        minimumColumnWidth: CGFloat = 72,
+        maximumColumnWidth: CGFloat = 240,
+        cellHorizontalPadding: CGFloat = 10,
+        cellVerticalPadding: CGFloat = 7,
+        paragraphSpacingBefore: CGFloat = 12,
+        paragraphSpacing: CGFloat = 16,
+        cornerRadius: CGFloat = 7,
+        borderWidth: CGFloat = 1
+    ) {
+        self.fallbackMaxWidth = fallbackMaxWidth
+        self.minimumColumnWidth = minimumColumnWidth
+        self.maximumColumnWidth = maximumColumnWidth
+        self.cellHorizontalPadding = cellHorizontalPadding
+        self.cellVerticalPadding = cellVerticalPadding
+        self.paragraphSpacingBefore = paragraphSpacingBefore
+        self.paragraphSpacing = paragraphSpacing
+        self.cornerRadius = cornerRadius
+        self.borderWidth = borderWidth
+    }
+
+    public static let `default` = TableStyle()
 }
 
 // MARK: - Task checkboxes

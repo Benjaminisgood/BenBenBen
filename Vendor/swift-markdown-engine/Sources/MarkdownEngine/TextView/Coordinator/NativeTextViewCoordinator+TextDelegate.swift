@@ -133,8 +133,8 @@ extension NativeTextViewCoordinator {
         if codeBlockStructureChanged {
             effectiveParagraphCandidates = [NSRange(location: 0, length: fullText.length)]
         }
-        // Always restyle paragraphs containing latex/imageEmbed tokens to avoid stale raw text.
-        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens).map { fullText.paragraphRange(for: $0.range) }
+        // Always restyle paragraphs containing rendered block tokens to avoid stale raw text.
+        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens + parsed.tableTokens).map { fullText.paragraphRange(for: $0.range) }
         effectiveParagraphCandidates.append(contentsOf: latexParagraphs)
         effectiveParagraphCandidates.append(contentsOf: tokenRestyleParagraphs(
             in: fullText,
@@ -203,8 +203,8 @@ extension NativeTextViewCoordinator {
             let prevPara = nsText.paragraphRange(for: NSRange(location: safePrev, length: 0))
             paragraphCandidates.append(prevPara)
         }
-        // Also restyle paragraphs containing latex/imageEmbed tokens to refresh rendering.
-        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens).map { nsText.paragraphRange(for: $0.range) }
+        // Also restyle paragraphs containing rendered block tokens to refresh rendering.
+        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens + parsed.tableTokens).map { nsText.paragraphRange(for: $0.range) }
         paragraphCandidates.append(contentsOf: latexParagraphs)
         paragraphCandidates.append(contentsOf: tokenRestyleParagraphs(
             in: nsText,
@@ -230,7 +230,8 @@ extension NativeTextViewCoordinator {
                 let token = tokens[idx]
                 guard token.kind == .inlineLatex
                     || token.kind == .blockLatex
-                    || token.kind == .imageEmbed else {
+                    || token.kind == .imageEmbed
+                    || token.kind == .table else {
                     continue
                 }
                 let selectRange = token.contentRange

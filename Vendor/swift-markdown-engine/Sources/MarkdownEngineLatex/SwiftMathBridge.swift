@@ -112,9 +112,48 @@ public final class SwiftMathBridge: LatexRenderer, @unchecked Sendable {
 
     private static func preprocessLatex(_ latex: String) -> String {
         var output = latex.trimmingCharacters(in: .whitespacesAndNewlines)
+        output = replaceUnicodeMathSymbols(in: output)
         output = replaceTags(in: output)
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    private static func replaceUnicodeMathSymbols(in latex: String) -> String {
+        latex.reduce(into: "") { result, character in
+            if let replacement = unicodeMathSymbolMap[character] {
+                result += replacement
+            } else {
+                result.append(character)
+            }
+        }
+    }
+
+    private static let unicodeMathSymbolMap: [Character: String] = [
+        "α": "\\alpha ", "β": "\\beta ", "γ": "\\gamma ", "δ": "\\delta ",
+        "ε": "\\epsilon ", "ζ": "\\zeta ", "η": "\\eta ", "θ": "\\theta ",
+        "ι": "\\iota ", "κ": "\\kappa ", "λ": "\\lambda ", "μ": "\\mu ",
+        "ν": "\\nu ", "ξ": "\\xi ", "π": "\\pi ", "ρ": "\\rho ",
+        "σ": "\\sigma ", "τ": "\\tau ", "υ": "\\upsilon ", "φ": "\\phi ",
+        "χ": "\\chi ", "ψ": "\\psi ", "ω": "\\omega ",
+        "Γ": "\\Gamma ", "Δ": "\\Delta ", "Θ": "\\Theta ", "Λ": "\\Lambda ",
+        "Ξ": "\\Xi ", "Π": "\\Pi ", "Σ": "\\Sigma ", "Φ": "\\Phi ",
+        "Ψ": "\\Psi ", "Ω": "\\Omega ",
+        "≤": "\\le ", "≥": "\\ge ", "≠": "\\ne ", "≈": "\\approx ",
+        "≡": "\\equiv ", "∝": "\\propto ", "∞": "\\infty ",
+        "×": "\\times ", "÷": "\\div ", "±": "\\pm ", "∓": "\\mp ",
+        "∑": "\\sum ", "∏": "\\prod ", "∫": "\\int ", "∂": "\\partial ",
+        "∇": "\\nabla ", "√": "\\sqrt ", "∈": "\\in ", "∉": "\\notin ",
+        "∋": "\\ni ", "⊂": "\\subset ", "⊃": "\\supset ", "⊆": "\\subseteq ",
+        "⊇": "\\supseteq ", "∪": "\\cup ", "∩": "\\cap ", "∅": "\\emptyset ",
+        "∀": "\\forall ", "∃": "\\exists ", "¬": "\\neg ", "∧": "\\wedge ",
+        "∨": "\\vee ", "→": "\\to ", "←": "\\leftarrow ", "↔": "\\leftrightarrow ",
+        "⇒": "\\Rightarrow ", "⇐": "\\Leftarrow ", "⇔": "\\Leftrightarrow ",
+        "°": "^{\\circ}", "¹": "^{1}", "²": "^{2}", "³": "^{3}",
+        "⁰": "^{0}", "⁴": "^{4}", "⁵": "^{5}", "⁶": "^{6}",
+        "⁷": "^{7}", "⁸": "^{8}", "⁹": "^{9}", "₀": "_{0}",
+        "₁": "_{1}", "₂": "_{2}", "₃": "_{3}", "₄": "_{4}",
+        "₅": "_{5}", "₆": "_{6}", "₇": "_{7}", "₈": "_{8}",
+        "₉": "_{9}"
+    ]
 
     /// SwiftMath does not implement AMS `\tag`. Preserve the visual equation
     /// number by rendering it as spaced roman text at the end of the formula.
