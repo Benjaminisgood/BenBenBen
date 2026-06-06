@@ -35,6 +35,7 @@ final class NotchPanelController: NSObject {
     private let drawerState = DrawerState()
     private let editorInteractionState = EditorInteractionState()
     private let workbenchState = WorkbenchState()
+    private let scriptsState = ScriptsModuleState()
     private lazy var shellCommandStore = ShellCommandStore(benshellRootURL: directoryStore.benshellRootDirectoryURL)
     private let shellWorkspaceStore = ShellWorkspaceStore()
     private let launchdJobStore = LaunchdJobStore()
@@ -196,6 +197,7 @@ final class NotchPanelController: NSObject {
     }
 
     func newShellWorkspace() {
+        scriptsState.selectKind(.shell)
         shellWorkspaceStore.addWorkspace()
         let workspace = shellWorkspaceStore.activeWorkspace
         terminalRunner.usePersistence(
@@ -203,13 +205,13 @@ final class NotchPanelController: NSObject {
             outputURL: workspace.transcriptURL
         )
         syncShellIntegration()
-        showWorkbenchMode(.terminal)
+        showWorkbenchMode(.scripts)
     }
 
     func runShellCommand() {
-        showWorkbenchMode(.terminal)
+        scriptsState.selectKind(.shell)
+        showWorkbenchMode(.scripts)
         syncShellIntegration()
-        terminalRunner.run(clearsInputOnRun: true)
     }
 
     func runPythonFile() {
@@ -232,37 +234,33 @@ final class NotchPanelController: NSObject {
     }
 
     func newAppleScriptFile() {
+        scriptsState.selectKind(.appleScript)
         appleScriptStore.addFile()
-        showWorkbenchMode(.appleScript)
+        showWorkbenchMode(.scripts)
     }
 
     func runAppleScriptFile() {
-        showWorkbenchMode(.appleScript)
+        scriptsState.selectKind(.appleScript)
+        showWorkbenchMode(.scripts)
         appleScriptStore.persistActiveFile()
         let filePath = appleScriptStore.activeFile.filePath
-        appleScriptRunner.useWorkingDirectory(directoryStore.appleScriptDirectoryURL)
-        appleScriptRunner.run(
-            AppleScriptCommand.runFile(filePath),
-            displayCommand: "osascript \(appleScriptStore.activeFile.fileName)",
-            displayPrompt: "▶",
-            clearsInputOnRun: false,
-            showsSuccessfulExit: true,
-            showsFailedExit: true
+        let didLaunch = TerminalAppBridge.run(
+            command: AppleScriptCommand.runFile(filePath),
+            workingDirectory: directoryStore.appleScriptDirectoryURL.path
         )
+        scriptsState.lastLaunchStatus = didLaunch ? "launched in Terminal" : "Terminal launch failed"
     }
 
     func runAppleScriptCommand() {
-        showWorkbenchMode(.appleScript)
-        appleScriptRunner.useWorkingDirectory(directoryStore.appleScriptDirectoryURL)
+        scriptsState.selectKind(.appleScript)
+        showWorkbenchMode(.scripts)
         let command = appleScriptRunner.input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { return }
-        appleScriptRunner.run(
-            "/usr/bin/osascript -e \(command.shellEscaped)",
-            displayPrompt: "▶",
-            clearsInputOnRun: true,
-            showsSuccessfulExit: true,
-            showsFailedExit: true
+        let didLaunch = TerminalAppBridge.run(
+            command: "/usr/bin/osascript -e \(command.shellEscaped)",
+            workingDirectory: directoryStore.appleScriptDirectoryURL.path
         )
+        scriptsState.lastLaunchStatus = didLaunch ? "launched in Terminal" : "Terminal launch failed"
     }
 
     private func syncShellIntegration() {
@@ -305,6 +303,7 @@ final class NotchPanelController: NSObject {
             drawerState: drawerState,
             editorInteractionState: editorInteractionState,
             workbenchState: workbenchState,
+            scriptsState: scriptsState,
             pythonStore: pythonStore,
             appleScriptStore: appleScriptStore,
             shellCommandStore: shellCommandStore,

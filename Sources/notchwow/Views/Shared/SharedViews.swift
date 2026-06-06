@@ -89,7 +89,20 @@ struct ScriptToolbarModeButton: View {
                 .frame(width: 26, height: 24)
         }
         .buttonStyle(MarkdownToolbarButtonStyle())
-        .help(mode == .run ? "Switch to AI edit" : "Switch to command runner")
+        .help(mode == .run ? "Switch to AI edit" : "Switch to command finder")
+    }
+}
+
+struct OpenCurrentFileInVSCodeButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .frame(width: 26, height: 24)
+        }
+        .buttonStyle(MarkdownToolbarButtonStyle())
+        .help("Open this file in VS Code")
     }
 }
 

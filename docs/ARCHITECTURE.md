@@ -34,14 +34,13 @@ Package.swift
 
 ### SwiftUI 层
 
-`NotebookView.swift` 是工作台 UI 的 composition root。各模式视图位于 `Sources/notchwow/Views/` 下的 `Markdown`、`Shell`、`Python`、`AppleScript`、`Launchd` 和 `Shared` 子目录。当前可见模式如下：
+`NotebookView.swift` 是工作台 UI 的 composition root。各模式视图位于 `Sources/notchwow/Views/` 下的 `Markdown`、`Scripts`、`Python`、`AppleScript`、`Launchd` 和 `Shared` 子目录。当前可见模式如下：
 
 | 模式 | 标题 | 核心能力 |
 | --- | --- | --- |
 | Markdown | `MD` | 笔记、附件、Markdown 工具栏、AI 修改、AI 问答。 |
-| Shell | `Shell` | Shell 工作区脚本和命令输出。 |
+| Scripts | `Scripts` | Shell 与 AppleScript 脚本维护、toolkit 命令发现、Terminal 启动。 |
 | Python | `Py` | Python 文件、Conda 环境、持久 REPL。 |
-| AppleScript | `AS` | AppleScript 文件和单行命令。 |
 | Launchd | `Jobs` | plist 编辑、加载、卸载、AI 生成。 |
 
 ### 状态与存储层
@@ -50,7 +49,8 @@ Package.swift
 | --- | --- |
 | `NoteStore.swift` | Markdown 文件发现、切换、保存、外部变更同步。 |
 | `CodeFileStore.swift` | Python 和 AppleScript 文件的通用存储。 |
-| `ShellWorkspaceStore.swift` | Shell workspace、输入、脚本和 transcript。 |
+| `ShellWorkspaceStore.swift` | Shell workspace、脚本和历史 transcript。 |
+| `ScriptsModuleState.swift` | Scripts 模块的 Shell/AppleScript 当前语言、脚本搜索和命令选择状态。 |
 | `WorkspaceDirectoryStore.swift` | 用户可编辑的工作目录和持久化。 |
 | `LocalImageStore.swift` | Markdown 附件复制、manifest、图片解析。 |
 | `LaunchdJobStore.swift` | plist 扫描、保存、加载、卸载、孤儿服务清理。 |
@@ -60,7 +60,8 @@ Package.swift
 
 | 文件 | 职责 |
 | --- | --- |
-| `CommandRunner.swift` | 使用 `/bin/zsh -lc` 执行 Shell 或 `osascript` 命令。 |
+| `CommandRunner.swift` | 保留旧历史 transcript 与部分脚本执行能力；Scripts 命令启动已交给 Terminal.app。 |
+| `TerminalAppBridge.swift` | 使用 `osascript` 在 Terminal.app 打开目录或启动命令。 |
 | `PythonReplRunner.swift` | 维护 Python 子进程，通过 JSON 行协议执行输入和文件。 |
 | `CondaEnvironmentStore.swift` | 发现 Conda 环境，生成 Python 启动配置。 |
 | `MarkdownAIEditStore.swift` | 调用百炼兼容接口生成 Markdown 局部替换。 |
@@ -91,7 +92,7 @@ Package.swift
 
 | 路径 | 用途 |
 | --- | --- |
-| `~/Desktop/Benshell` | Shell 初始化和命令目录。 |
+| `Scripts/benshell` | 已迁入 notchwow 仓库的 Benshell 初始化和命令目录。 |
 | `~/miniforge3` | Conda 与默认 Python 路径。 |
 
 ## 5. 关键数据流
@@ -102,9 +103,11 @@ Package.swift
 
 粘贴附件时，`LocalImageStore` 把文件复制到 `attachments/`，记录 manifest，并向文档插入 wiki 风格引用。
 
-### Shell
+### Scripts
 
-`ShellInputToolbar` -> `CommandRunner.run` -> `/bin/zsh -lc` -> transcript 文件 -> `OutputView`。
+`ScriptsCommandToolbar` -> `ShellCommandStore` -> `TerminalAppBridge.run` -> Terminal.app。
+
+toolkit 划分采用混合策略：本地文件按语言分为 `Shell scripts` 和 `AppleScripts`，迁入的 Benshell 命令按可执行脚本名/任务域分组，例如 `benshell`、`nanobot`、`deeptutor`、`papis`。Shell 历史仍保留在 `~/keyoti/shs/workspaces/*.log`，AppleScript 历史仍保留在 `~/keyoti/applescripts/transcript.log`。
 
 ### Python
 

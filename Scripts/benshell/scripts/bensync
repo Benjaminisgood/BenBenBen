@@ -1,0 +1,99 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+SCRIPT_PATH="${0:A}"
+SCRIPT_DIR="${SCRIPT_PATH:h}"
+PROJECTS=(benshell nanobot deeptutor papis taptap notchwow)
+
+usage() {
+  cat <<'EOF'
+Usage: bensync [command] [project] [remote]
+
+Commands:
+  sync        Pull and push committed history (default)
+  status      Show Git status and divergence
+  pull        Pull remote commits with rebase/autostash
+  push        Push committed local history
+
+Projects:
+  all         benshell, nanobot, deeptutor, papis, taptap, and notchwow (default)
+  benshell
+  nanobot
+  deeptutor
+  papis
+  taptap
+  notchwow
+
+Examples:
+  bensync
+  bensync status
+  bensync sync benshell
+  bensync sync nanobot
+  bensync sync taptap
+  bensync sync notchwow
+  bensync pull all origin
+EOF
+}
+
+is_project() {
+  local value="$1"
+  local project
+
+  [[ "$value" == "all" ]] && return 0
+  for project in $PROJECTS; do
+    [[ "$value" == "$project" ]] && return 0
+  done
+
+  return 1
+}
+
+command_name="${1:-sync}"
+target="all"
+
+case "$command_name" in
+  sync|status|pull|push)
+    if (( $# > 0 )); then
+      shift
+    fi
+    if (( $# > 0 )) && is_project "$1"; then
+      target="$1"
+      shift
+    fi
+    ;;
+  all|benshell|nanobot|deeptutor|papis|taptap|notchwow)
+    target="$command_name"
+    command_name="sync"
+    if (( $# > 0 )); then
+      shift
+    fi
+    ;;
+  help|-h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+
+controller_command="$command_name"
+if [[ "$controller_command" == "status" ]]; then
+  controller_command="git-status"
+fi
+
+run_one() {
+  local project="$1"
+  shift
+  print -- ""
+  print -- "==> $project"
+  "$SCRIPT_DIR/$project" "$controller_command" "$@"
+}
+
+if [[ "$target" == "all" ]]; then
+  for project in $PROJECTS; do
+    run_one "$project" "$@"
+  done
+else
+  run_one "$target" "$@"
+fi

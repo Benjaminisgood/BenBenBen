@@ -1,6 +1,12 @@
 import Combine
 import Foundation
 
+enum ShellCommandKind: String {
+    case benshell
+    case shellScript
+    case appleScript
+}
+
 struct ShellCommandItem: Identifiable, Equatable {
     let id: String
     let group: String
@@ -8,6 +14,7 @@ struct ShellCommandItem: Identifiable, Equatable {
     let command: String
     let summary: String
     let systemImage: String
+    let kind: ShellCommandKind
 }
 
 struct ShellToolkit: Identifiable, Equatable {
@@ -50,8 +57,9 @@ final class ShellCommandStore: ObservableObject {
     }
 
     func refresh() {
-        commands = Self.loadScriptCommands(benshellRootURL: benshellRootURL)
-            + Self.loadAliasCommands(benshellRootURL: benshellRootURL)
+        commands = Self.loadBenshellScriptCommands(benshellRootURL: benshellRootURL)
+            + Self.loadLocalShellScriptCommands()
+            + Self.loadAppleScriptCommands()
         if !toolkits.contains(where: { $0.name == selectedToolkitName }),
            let firstToolkit = toolkits.first {
             selectToolkit(firstToolkit.name)
@@ -84,7 +92,9 @@ final class ShellCommandStore: ObservableObject {
 
     func filteredCommands(in toolkitName: String, matching query: String) -> [ShellCommandItem] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return [] }
+        guard !trimmedQuery.isEmpty else {
+            return commands.filter { $0.group == toolkitName }
+        }
 
         return commands.filter { item in
             item.group == toolkitName
@@ -96,7 +106,7 @@ final class ShellCommandStore: ObservableObject {
         }
     }
 
-    private nonisolated static func loadScriptCommands(benshellRootURL: URL) -> [ShellCommandItem] {
+    private nonisolated static func loadBenshellScriptCommands(benshellRootURL: URL) -> [ShellCommandItem] {
         let scriptsRoot = benshellRootURL.appendingPathComponent("scripts", isDirectory: true)
         let urls = (try? FileManager.default.contentsOfDirectory(
             at: scriptsRoot,
@@ -149,7 +159,8 @@ final class ShellCommandStore: ObservableObject {
                 title: "\(scriptName) \(parsed.signature)",
                 command: command,
                 summary: parsed.summary,
-                systemImage: systemImage(for: scriptName)
+                systemImage: systemImage(for: scriptName),
+                kind: .benshell
             ))
         }
 
@@ -160,7 +171,8 @@ final class ShellCommandStore: ObservableObject {
                 title: "\(scriptName) help",
                 command: "\(scriptName) help",
                 summary: "Show available commands",
-                systemImage: systemImage(for: scriptName)
+                systemImage: systemImage(for: scriptName),
+                kind: .benshell
             ))
         }
 
@@ -196,51 +208,65 @@ final class ShellCommandStore: ObservableObject {
         return "\(scriptName) \(runnableSignature)"
     }
 
-    private nonisolated static func loadAliasCommands(benshellRootURL: URL) -> [ShellCommandItem] {
-        let aliasesRoot = benshellRootURL.appendingPathComponent("zsh/aliases", isDirectory: true)
+    private nonisolated static func loadLocalShellScriptCommands() -> [ShellCommandItem] {
+        loadRunnableFiles(
+            in: WorkspacePaths.shellWorkspaceScriptRoot,
+            fileExtension: "sh",
+            group: "Shell scripts",
+            systemImage: "dollarsign.square",
+            kind: .shellScript
+        ) { url in
+            "/bin/zsh \(url.path.shellEscaped)"
+        }
+    }
+
+    private nonisolated static func loadAppleScriptCommands() -> [ShellCommandItem] {
+        loadRunnableFiles(
+            in: WorkspacePaths.appleScriptRoot,
+            fileExtension: "applescript",
+            group: "AppleScripts",
+            systemImage: "command.square",
+            kind: .appleScript
+        ) { url in
+            AppleScriptCommand.runFile(url.path)
+        }
+    }
+
+    private nonisolated static func loadRunnableFiles(
+        in rootURL: URL,
+        fileExtension: String,
+        group: String,
+        systemImage: String,
+        kind: ShellCommandKind,
+        command: (URL) -> String
+    ) -> [ShellCommandItem] {
         let urls = (try? FileManager.default.contentsOfDirectory(
-            at: aliasesRoot,
+            at: rootURL,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         )) ?? []
 
         return urls
-            .filter { $0.pathExtension == "zsh" }
+            .filter { $0.pathExtension.lowercased() == fileExtension.lowercased() }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            .flatMap(parseAliasCommands)
-    }
-
-    private nonisolated static func parseAliasCommands(from url: URL) -> [ShellCommandItem] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-
-        return text
-            .components(separatedBy: .newlines)
-            .compactMap { line -> ShellCommandItem? in
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed.hasPrefix("alias ") else { return nil }
-
-                let body = trimmed.dropFirst("alias ".count)
-                guard let equalsIndex = body.firstIndex(of: "=") else { return nil }
-
-                let name = String(body[..<equalsIndex])
-                var target = String(body[body.index(after: equalsIndex)...])
-                target = target.trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
-
-                guard !name.isEmpty, !target.isEmpty else { return nil }
-
+            .map { url in
+                let title = url.deletingPathExtension().lastPathComponent
                 return ShellCommandItem(
-                    id: "alias-\(name)",
-                    group: "aliases",
-                    title: name,
-                    command: name,
-                    summary: target,
-                    systemImage: "text.badge.checkmark"
+                    id: "\(kind.rawValue)-\(url.path)",
+                    group: group,
+                    title: title,
+                    command: command(url),
+                    summary: url.path,
+                    systemImage: systemImage,
+                    kind: kind
                 )
             }
     }
 
     private nonisolated static func systemImage(for scriptName: String) -> String {
         switch scriptName {
+        case "Shell scripts": return "dollarsign.square"
+        case "AppleScripts": return "command.square"
         case "benshell": return "checkmark.seal"
         case "bensync": return "arrow.triangle.2.circlepath"
         case "nanobot": return "bolt"
@@ -253,10 +279,12 @@ final class ShellCommandStore: ObservableObject {
 
     private nonisolated static func toolkitSortKey(_ name: String) -> String {
         switch name {
-        case "benshell": return "00-\(name)"
-        case "nanobot": return "01-\(name)"
-        case "deeptutor": return "02-\(name)"
-        case "taptap": return "03-\(name)"
+        case "Shell scripts": return "00-\(name)"
+        case "AppleScripts": return "01-\(name)"
+        case "benshell": return "02-\(name)"
+        case "nanobot": return "03-\(name)"
+        case "deeptutor": return "04-\(name)"
+        case "taptap": return "05-\(name)"
         default: return "10-\(name)"
         }
     }

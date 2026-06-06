@@ -3,9 +3,8 @@ import Foundation
 
 enum WorkbenchMode: String, CaseIterable, Identifiable {
     case markdown
-    case terminal
+    case scripts
     case python
-    case appleScript
     case tasks
 
     var id: String { rawValue }
@@ -13,9 +12,8 @@ enum WorkbenchMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .markdown: return "MD"
-        case .terminal: return "Shell"
+        case .scripts: return "Scripts"
         case .python: return "Py"
-        case .appleScript: return "AS"
         case .tasks: return "Jobs"
         }
     }
@@ -23,9 +21,8 @@ enum WorkbenchMode: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .markdown: return "doc.richtext"
-        case .terminal: return "dollarsign.square"
+        case .scripts: return "terminal"
         case .python: return "chevron.left.forwardslash.chevron.right"
-        case .appleScript: return "command.square"
         case .tasks: return "clock.arrow.2.circlepath"
         }
     }

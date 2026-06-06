@@ -17,6 +17,7 @@ struct NotebookView: View {
     @ObservedObject var drawerState: DrawerState
     @ObservedObject var editorInteractionState: EditorInteractionState
     @ObservedObject var workbenchState: WorkbenchState
+    @ObservedObject var scriptsState: ScriptsModuleState
     @ObservedObject var pythonStore: CodeFileStore
     @ObservedObject var appleScriptStore: CodeFileStore
     @ObservedObject var shellCommandStore: ShellCommandStore
@@ -77,6 +78,7 @@ struct NotebookView: View {
 
                     WorkbenchTopToolsView(
                         workbenchState: workbenchState,
+                        scriptsState: scriptsState,
                         noteStore: store,
                         editorInteractionState: editorInteractionState,
                         pythonStore: pythonStore,
@@ -100,6 +102,7 @@ struct NotebookView: View {
 
                 WorkbenchContentView(
                     workbenchState: workbenchState,
+                    scriptsState: scriptsState,
                     store: store,
                     settingsStore: settingsStore,
                     imageStore: imageStore,
@@ -241,6 +244,7 @@ struct WorkbenchModeControl: View {
 
 struct WorkbenchTopToolsView: View {
     @ObservedObject var workbenchState: WorkbenchState
+    @ObservedObject var scriptsState: ScriptsModuleState
     @ObservedObject var noteStore: NoteStore
     let editorInteractionState: EditorInteractionState
     @ObservedObject var pythonStore: CodeFileStore
@@ -260,20 +264,18 @@ struct WorkbenchTopToolsView: View {
                     store: noteStore,
                     editorInteractionState: editorInteractionState
                 )
-            case .terminal:
-                ShellTopToolsView(
-                    workspaceStore: shellWorkspaceStore,
-                    runner: terminalRunner
+            case .scripts:
+                ScriptsTopToolsView(
+                    scriptsState: scriptsState,
+                    shellWorkspaceStore: shellWorkspaceStore,
+                    appleScriptStore: appleScriptStore,
+                    commandStore: shellCommandStore,
+                    terminalRunner: terminalRunner
                 )
             case .python:
                 PythonTopToolsView(
                     codeStore: pythonStore,
                     runner: pythonRunner
-                )
-            case .appleScript:
-                AppleScriptTopToolsView(
-                    codeStore: appleScriptStore,
-                    runner: appleScriptRunner
                 )
             case .tasks:
                 LaunchdTopToolsView(
@@ -286,6 +288,7 @@ struct WorkbenchTopToolsView: View {
 }
 struct WorkbenchContentView: View {
     @ObservedObject var workbenchState: WorkbenchState
+    @ObservedObject var scriptsState: ScriptsModuleState
     @ObservedObject var store: NoteStore
     @ObservedObject var settingsStore: AppSettingsStore
     let imageStore: LocalImageStore
@@ -322,14 +325,17 @@ struct WorkbenchContentView: View {
                     directoryStore: directoryStore,
                     size: size
                 )
-            case .terminal:
-                ShellPane(
+            case .scripts:
+                ScriptsWorkspaceView(
+                    scriptsState: scriptsState,
                     commandStore: shellCommandStore,
-                    workspaceStore: shellWorkspaceStore,
+                    shellWorkspaceStore: shellWorkspaceStore,
+                    appleScriptStore: appleScriptStore,
                     directoryStore: directoryStore,
                     settingsStore: settingsStore,
-                    aiStore: shellAIStore,
-                    runner: terminalRunner,
+                    shellAIStore: shellAIStore,
+                    appleScriptAIStore: appleScriptAIStore,
+                    terminalRunner: terminalRunner,
                     size: size
                 )
             case .python:
@@ -340,15 +346,6 @@ struct WorkbenchContentView: View {
                     settingsStore: settingsStore,
                     aiStore: pythonAIStore,
                     runner: pythonRunner,
-                    size: size
-                )
-            case .appleScript:
-                AppleScriptWorkspaceView(
-                    codeStore: appleScriptStore,
-                    directoryStore: directoryStore,
-                    settingsStore: settingsStore,
-                    aiStore: appleScriptAIStore,
-                    runner: appleScriptRunner,
                     size: size
                 )
             case .tasks:

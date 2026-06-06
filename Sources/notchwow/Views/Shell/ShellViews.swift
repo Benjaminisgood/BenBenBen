@@ -362,7 +362,7 @@ struct ShellToolkitPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(FilePillButtonStyle(isSelected: isShowingToolkitPicker))
-        .help("Shell toolkit")
+        .help("Scripts toolkit")
         .popover(
             isPresented: $isShowingToolkitPicker,
             attachmentAnchor: .point(leftPickerPopoverAnchor),
@@ -378,7 +378,7 @@ struct ShellToolkitPicker: View {
                         SearchResultRow(
                             systemImage: toolkit.systemImage,
                             title: toolkit.name,
-                            detail: "Benshell command toolkit"
+                            detail: "Scripts command toolkit"
                         )
                     }
                     .buttonStyle(FilePillButtonStyle(isSelected: toolkit.name == commandStore.selectedToolkit.name))

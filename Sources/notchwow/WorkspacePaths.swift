@@ -3,9 +3,22 @@ import Foundation
 enum WorkspacePaths {
     static let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
     static let root = homeDirectory.appendingPathComponent("keyoti", isDirectory: true)
-    static let benshellRoot = homeDirectory
+    static let sourceRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    static let integratedBenshellRoot = sourceRoot
+        .appendingPathComponent("Scripts", isDirectory: true)
+        .appendingPathComponent("benshell", isDirectory: true)
+    static let legacyBenshellRoot = homeDirectory
         .appendingPathComponent("Desktop", isDirectory: true)
         .appendingPathComponent("Benshell", isDirectory: true)
+    static let benshellRoot: URL = {
+        if FileManager.default.fileExists(atPath: integratedBenshellRoot.path) {
+            return integratedBenshellRoot
+        }
+        return legacyBenshellRoot
+    }()
     static let benshellInitScript = benshellRoot.appendingPathComponent("zsh/init.zsh", isDirectory: false)
     static let condaRoot = homeDirectory.appendingPathComponent("miniforge3", isDirectory: true)
     static let condaExecutable = condaRoot.appendingPathComponent("bin/conda", isDirectory: false)

@@ -75,8 +75,13 @@ final class WorkspaceDirectoryStore: ObservableObject {
             ?? WorkspacePaths.appleScriptRoot.path
         launchdDirectory = AppDefaults.string(forKey: Self.launchdDirectoryKey, migrating: Self.legacyLaunchdDirectoryKey)
             ?? WorkspacePaths.launchdRoot.path
-        benshellRootDirectory = AppDefaults.string(forKey: Self.benshellRootDirectoryKey)
-            ?? WorkspacePaths.benshellRoot.path
+        let savedBenshellRoot = AppDefaults.string(forKey: Self.benshellRootDirectoryKey)
+        if savedBenshellRoot.map(Self.normalizedPath) == WorkspacePaths.legacyBenshellRoot.standardizedFileURL.path {
+            benshellRootDirectory = WorkspacePaths.benshellRoot.path
+            AppDefaults.set(Self.normalizedPath(WorkspacePaths.benshellRoot.path), forKey: Self.benshellRootDirectoryKey)
+        } else {
+            benshellRootDirectory = savedBenshellRoot ?? WorkspacePaths.benshellRoot.path
+        }
         condaRootDirectory = AppDefaults.string(forKey: Self.condaRootDirectoryKey)
             ?? WorkspacePaths.condaRoot.path
     }
@@ -192,6 +197,10 @@ final class WorkspaceDirectoryStore: ObservableObject {
 
     func openCondaRootDirectoryInVSCode() {
         openInVSCode(condaRootDirectoryURL)
+    }
+
+    func openFileInVSCode(_ fileURL: URL) {
+        openInVSCode(fileURL)
     }
 
     // MARK: - Terminal

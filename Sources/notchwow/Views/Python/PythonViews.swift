@@ -119,6 +119,7 @@ struct PythonWorkspaceView: View {
             PythonCommandToolbar(
                 codeStore: codeStore,
                 condaStore: condaStore,
+                directoryStore: directoryStore,
                 settingsStore: settingsStore,
                 aiStore: aiStore,
                 toolbarMode: $toolbarMode,
@@ -165,6 +166,7 @@ struct PythonWorkspaceView: View {
 struct PythonCommandToolbar: View {
     @ObservedObject var codeStore: CodeFileStore
     @ObservedObject var condaStore: CondaEnvironmentStore
+    @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var settingsStore: AppSettingsStore
     @ObservedObject var aiStore: ScriptAIEditStore
     @Binding var toolbarMode: ScriptToolbarMode
@@ -173,6 +175,11 @@ struct PythonCommandToolbar: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            OpenCurrentFileInVSCodeButton {
+                codeStore.persistActiveFile()
+                directoryStore.openFileInVSCode(codeStore.activeFile.fileURL)
+            }
+
             PythonEnvironmentPicker(
                 condaStore: condaStore,
                 isShowingEnvironmentPicker: $isShowingEnvironmentPicker
