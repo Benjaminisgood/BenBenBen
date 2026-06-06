@@ -136,6 +136,20 @@ final class NoteStore: ObservableObject {
         }
     }
 
+    func openActiveTabInDefaultEditor() {
+        persistActiveTabToDisk(allowRename: true)
+        guard let url = activeTab.fileURL else {
+            lastError = "Could not open Markdown file: missing file path."
+            return
+        }
+
+        if NSWorkspace.shared.open(url) {
+            lastError = nil
+        } else {
+            lastError = "Could not open \(url.lastPathComponent) in the default editor."
+        }
+    }
+
     func selectTab(_ id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
         activeTabID = id

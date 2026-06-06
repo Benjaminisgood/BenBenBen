@@ -50,10 +50,13 @@ struct MarkdownEditorPanel: View {
                 aiStore: aiStore,
                 chatStore: chatStore,
                 aiMode: $aiMode,
-                onSubmitAI: submitAIEdit,
+                onSubmitAI: { submitAIEdit() },
                 onSubmitChat: submitChat,
                 onAcceptAI: acceptAIEdit,
-                onRejectAI: aiStore.rejectProposal
+                onRejectAI: aiStore.rejectProposal,
+                onOptimizeMarkdown: optimizeCurrentMarkdown,
+                onPracticeMarkdown: startPracticeSession,
+                onOpenExternally: store.openActiveTabInDefaultEditor
             )
                 .frame(width: size.width, height: toolbarHeight)
                 .background(Color(red: 0.055, green: 0.055, blue: 0.065))
@@ -64,8 +67,9 @@ struct MarkdownEditorPanel: View {
         max(size.height - outputHeight - toolbarHeight - separatorHeight * 2, 120)
     }
 
-    private func submitAIEdit() {
-        let range = editorInteractionState.currentSelectionRange()
+    private func submitAIEdit(selectedRange explicitRange: NSRange? = nil) {
+        let range = explicitRange
+            ?? editorInteractionState.currentSelectionRange()
             ?? store.selectionRange(for: store.activeTabID)
         store.updateSelection(for: store.activeTabID, range: range)
         aiStore.submit(
@@ -75,6 +79,28 @@ struct MarkdownEditorPanel: View {
             fullText: store.text,
             selectedRange: range
         )
+    }
+
+    private func optimizeCurrentMarkdown() {
+        guard !aiStore.isRunning else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            aiMode = .edit
+        }
+        aiStore.input = """
+        请优化整篇 Markdown 文件：保留事实和原意，改善标题层级、段落结构、表达清晰度、列表组织和 Markdown 格式。不要添加不存在的信息。
+        """
+        submitAIEdit(selectedRange: NSRange(location: 0, length: (store.text as NSString).length))
+    }
+
+    private func startPracticeSession() {
+        guard !chatStore.isRunning else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            aiMode = .chat
+        }
+        chatStore.input = """
+        请基于这篇 Markdown 笔记出一组学习练习题，包含：5 道快速回忆题、3 道理解应用题、1 道综合题，并在最后给出简洁答案。
+        """
+        submitChat()
     }
 
     private func acceptAIEdit() {
@@ -435,8 +461,44 @@ struct MarkdownShortcutToolbar: View {
     let onSubmitChat: () -> Void
     let onAcceptAI: () -> Void
     let onRejectAI: () -> Void
+    let onOptimizeMarkdown: () -> Void
+    let onPracticeMarkdown: () -> Void
+    let onOpenExternally: () -> Void
+
+    @State private var isConfirmingOptimization = false
 
     var body: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 8) {
+                formattingControls
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                MarkdownAIComposer(
+                    aiStore: aiStore,
+                    chatStore: chatStore,
+                    aiMode: aiMode,
+                    onSubmitAI: onSubmitAI,
+                    onSubmitChat: onSubmitChat
+                )
+                .frame(width: composerWidth(for: proxy.size.width), height: 26)
+
+                rightControls
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 10)
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .confirmationDialog("Optimize current Markdown file?", isPresented: $isConfirmingOptimization) {
+            Button("Ask AI to Optimize") {
+                onOptimizeMarkdown()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("AI will review the whole file and create an editable proposal before anything is applied.")
+        }
+    }
+
+    private var formattingControls: some View {
         HStack(spacing: 4) {
             ForEach(MarkdownCommand.allCases) { command in
                 Button {
@@ -450,8 +512,21 @@ struct MarkdownShortcutToolbar: View {
                 .help(command.help)
             }
 
-            Spacer(minLength: 0)
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    aiMode = aiMode == .edit ? .chat : .edit
+                }
+            } label: {
+                Image(systemName: aiMode == .edit ? "pencil.line" : "bubble.left.fill")
+                    .frame(width: 26, height: 24)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .help(aiMode == .edit ? "Switch to Chat mode" : "Switch to Edit mode")
+        }
+    }
 
+    private var rightControls: some View {
+        HStack(spacing: 4) {
             if aiMode == .edit, aiStore.proposal != nil {
                 Button(action: onAcceptAI) {
                     Image(systemName: "checkmark")
@@ -480,56 +555,84 @@ struct MarkdownShortcutToolbar: View {
                 .help("Clear chat")
             }
 
-            Button {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    aiMode = aiMode == .edit ? .chat : .edit
-                }
-            } label: {
-                Image(systemName: aiMode == .edit ? "pencil.line" : "bubble.left.fill")
-                    .frame(width: 26, height: 24)
-            }
-            .buttonStyle(MarkdownToolbarButtonStyle())
-            .help(aiMode == .edit ? "Switch to Chat mode" : "Switch to Edit mode")
-
-            HStack(spacing: 6) {
-                Image(systemName: aiMode == .edit ? "sparkles" : "bubble.left")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.46))
-                    .frame(width: 14)
-
-                TextField(
-                    aiMode == .edit ? "Ask AI to edit" : "Ask about this note...",
-                    text: aiMode == .edit ? $aiStore.input : $chatStore.input
-                )
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.86))
-                    .disabled(aiMode == .edit ? aiStore.isRunning : chatStore.isRunning)
-                    .onSubmit {
-                        if aiMode == .edit {
-                            if aiStore.canSubmit { onSubmitAI() }
-                        } else {
-                            if chatStore.canSubmit { onSubmitChat() }
-                        }
-                    }
-
-                Button(action: aiMode == .edit ? onSubmitAI : onSubmitChat) {
-                    Image(systemName: "arrow.up")
-                        .frame(width: 24, height: 22)
+            TopToolbarButtonStrip {
+                Button {
+                    isConfirmingOptimization = true
+                } label: {
+                    Image(systemName: "wand.and.sparkles")
+                        .frame(width: 26, height: 24)
                 }
                 .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(aiMode == .edit ? !aiStore.canSubmit : !chatStore.canSubmit)
-                .help(aiMode == .edit ? "Ask AI to edit" : "Send message")
+                .disabled(aiStore.isRunning)
+                .help("Optimize this Markdown file")
+
+                Button(action: onPracticeMarkdown) {
+                    Image(systemName: "graduationcap")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(chatStore.isRunning)
+                .help("Ask AI to create practice questions")
+
+                Button(action: onOpenExternally) {
+                    Image(systemName: "arrow.up.forward.square")
+                        .frame(width: 26, height: 24)
+                }
+                .buttonStyle(MarkdownToolbarButtonStyle())
+                .help("Open in default editor")
             }
-            .padding(.leading, 8)
-            .padding(.trailing, 4)
-            .frame(width: 282, height: 26)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(.white.opacity(0.045))
-            )
         }
-        .padding(.horizontal, 10)
+    }
+
+    private func composerWidth(for toolbarWidth: CGFloat) -> CGFloat {
+        min(max(toolbarWidth * 0.42, 320), 390)
+    }
+}
+
+struct MarkdownAIComposer: View {
+    @ObservedObject var aiStore: MarkdownAIEditStore
+    @ObservedObject var chatStore: MarkdownAIChatStore
+    let aiMode: MarkdownAIMode
+    let onSubmitAI: () -> Void
+    let onSubmitChat: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: aiMode == .edit ? "sparkles" : "bubble.left")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.46))
+                .frame(width: 14)
+
+            TextField(
+                aiMode == .edit ? "Ask AI to edit" : "Ask about this note...",
+                text: aiMode == .edit ? $aiStore.input : $chatStore.input
+            )
+                .textFieldStyle(.plain)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.86))
+                .disabled(aiMode == .edit ? aiStore.isRunning : chatStore.isRunning)
+                .onSubmit {
+                    if aiMode == .edit {
+                        if aiStore.canSubmit { onSubmitAI() }
+                    } else {
+                        if chatStore.canSubmit { onSubmitChat() }
+                    }
+                }
+
+            Button(action: aiMode == .edit ? onSubmitAI : onSubmitChat) {
+                Image(systemName: "arrow.up")
+                    .frame(width: 24, height: 22)
+            }
+            .buttonStyle(MarkdownToolbarButtonStyle())
+            .disabled(aiMode == .edit ? !aiStore.canSubmit : !chatStore.canSubmit)
+            .help(aiMode == .edit ? "Ask AI to edit" : "Send message")
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(.white.opacity(0.045))
+        )
     }
 }
 
