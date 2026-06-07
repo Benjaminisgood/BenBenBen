@@ -113,6 +113,7 @@ public final class SwiftMathBridge: LatexRenderer, @unchecked Sendable {
     private static func preprocessLatex(_ latex: String) -> String {
         var output = latex.trimmingCharacters(in: .whitespacesAndNewlines)
         output = replaceUnicodeMathSymbols(in: output)
+        output = replaceOperatorNames(in: output)
         output = replaceTags(in: output)
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -197,6 +198,53 @@ public final class SwiftMathBridge: LatexRenderer, @unchecked Sendable {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let renderedTag = isStarred ? tagContent : parenthesizedTag(tagContent)
             output += "\\qquad \\mathrm{\(escapeTextForRoman(renderedTag))}"
+            index = latex.index(after: closeBrace)
+        }
+
+        return output
+    }
+
+    /// SwiftMath does not implement `\operatorname{...}`. Render the operator
+    /// name in roman text so common functions such as `\operatorname{erfc}`
+    /// still display instead of making the whole formula fall back to source.
+    private static func replaceOperatorNames(in latex: String) -> String {
+        var output = ""
+        var index = latex.startIndex
+
+        while index < latex.endIndex {
+            let commandStart = latex.index(after: index)
+            let commandEnd = commandStart < latex.endIndex
+                ? latex[commandStart...].firstIndex(where: { !$0.isLetter }) ?? latex.endIndex
+                : latex.endIndex
+
+            guard latex[index] == "\\",
+                  latex[commandStart..<commandEnd] == "operatorname" else {
+                output.append(latex[index])
+                index = latex.index(after: index)
+                continue
+            }
+
+            var cursor = commandEnd
+            if cursor < latex.endIndex && latex[cursor] == "*" {
+                cursor = latex.index(after: cursor)
+            }
+
+            while cursor < latex.endIndex && latex[cursor].isWhitespace {
+                cursor = latex.index(after: cursor)
+            }
+
+            guard cursor < latex.endIndex,
+                  latex[cursor] == "{",
+                  let closeBrace = matchingBrace(in: latex, openBrace: cursor) else {
+                output += "\\operatorname"
+                index = commandEnd
+                continue
+            }
+
+            let contentStart = latex.index(after: cursor)
+            let name = String(latex[contentStart..<closeBrace])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            output += "\\mathrm{\(escapeTextForRoman(name))}"
             index = latex.index(after: closeBrace)
         }
 

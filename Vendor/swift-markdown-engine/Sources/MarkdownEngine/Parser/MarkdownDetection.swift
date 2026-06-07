@@ -34,7 +34,7 @@ enum MarkdownDetection {
                 continue
             }
             if caretLocation == end {
-                if token.kind == .table {
+                if token.kind == .blockLatex || token.kind == .table {
                     continue
                 }
                 let lastIndex = end - 1

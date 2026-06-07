@@ -32,7 +32,7 @@ extension MarkdownStyler {
             if isActive {
                 appendSecondaryMarkers(for: token, to: &attrs, theme: ctx.configuration.theme)
             } else if !latexContent.isEmpty,
-                      let entry = ctx.services.latex.render(latex: latexContent, fontSize: latexFontSize, theme: ctx.configuration.theme) {
+                      let entry = renderFirstBlockLatexCandidate(latexContent, fontSize: latexFontSize, ctx: ctx) {
                 _ = appendRenderedStandaloneBlock(
                     for: token,
                     rawContent: rawLatexContent,
@@ -55,6 +55,33 @@ extension MarkdownStyler {
             }
         }
         return attrs
+    }
+
+    private static func renderFirstBlockLatexCandidate(
+        _ latex: String,
+        fontSize: CGFloat,
+        ctx: StylingContext
+    ) -> LatexRenderResult? {
+        for candidate in blockLatexRenderCandidates(from: latex) {
+            if let entry = ctx.services.latex.render(latex: candidate, fontSize: fontSize, theme: ctx.configuration.theme) {
+                return entry
+            }
+        }
+        return nil
+    }
+
+    private static func blockLatexRenderCandidates(from latex: String) -> [String] {
+        let trimmed = latex.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let foldedLines = trimmed
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        guard foldedLines != trimmed else { return [trimmed] }
+        return [trimmed, foldedLines]
     }
 
     // MARK: Inline LaTeX $formula$
