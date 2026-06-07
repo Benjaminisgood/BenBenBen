@@ -87,18 +87,23 @@ private enum MarkdownTableRenderer {
 
         let headerFont = NSFontManager.shared.convert(ctx.baseFont, toHaveTrait: .boldFontMask)
         let bodyFont = ctx.baseFont
-        let maxWidth = tableMaxWidth(ctx: ctx)
-        let columnWidths = resolvedColumnWidths(
+        let theme = ctx.configuration.theme
+        let renderedRows = renderedCellRows(
             table: table,
             headerFont: headerFont,
             bodyFont: bodyFont,
+            theme: theme,
+            ctx: ctx
+        )
+        let maxWidth = tableMaxWidth(ctx: ctx)
+        let columnWidths = resolvedColumnWidths(
+            renderedRows: renderedRows,
             config: config,
             maxWidth: maxWidth
         )
         guard !columnWidths.isEmpty else { return nil }
 
-        let rowData = [table.header] + table.rows
-        let rowHeights = rowData.enumerated().map { index, row in
+        let rowHeights = renderedRows.enumerated().map { index, row in
             resolvedRowHeight(
                 row: row,
                 isHeader: index == 0,
@@ -112,15 +117,13 @@ private enum MarkdownTableRenderer {
         let tableHeight = ceil(rowHeights.reduce(0, +))
         guard tableWidth > 0, tableHeight > 0 else { return nil }
 
-        let theme = ctx.configuration.theme
         let image = NSImage(size: CGSize(width: tableWidth, height: tableHeight), flipped: true) { rect in
             drawTable(
                 table: table,
+                renderedRows: renderedRows,
                 rect: rect,
                 columnWidths: columnWidths,
                 rowHeights: rowHeights,
-                headerFont: headerFont,
-                bodyFont: bodyFont,
                 theme: theme,
                 config: config
             )
@@ -139,21 +142,37 @@ private enum MarkdownTableRenderer {
         return ctx.configuration.table.fallbackMaxWidth
     }
 
-    private static func resolvedColumnWidths(
+    private static func renderedCellRows(
         table: MarkdownTable,
         headerFont: NSFont,
         bodyFont: NSFont,
+        theme: MarkdownEditorTheme,
+        ctx: MarkdownStyler.StylingContext
+    ) -> [[NSAttributedString]] {
+        let rows = [table.header] + table.rows
+        return rows.enumerated().map { rowIndex, row in
+            let isHeader = rowIndex == 0
+            let font = isHeader ? headerFont : bodyFont
+            let color = isHeader
+                ? theme.bodyText.withAlphaComponent(0.92)
+                : theme.bodyText.withAlphaComponent(0.78)
+            return row.map {
+                attributedCellText($0, font: font, color: color, ctx: ctx)
+            }
+        }
+    }
+
+    private static func resolvedColumnWidths(
+        renderedRows: [[NSAttributedString]],
         config: TableStyle,
         maxWidth: CGFloat
     ) -> [CGFloat] {
-        let columnCount = table.header.count
-        let allRows = [table.header] + table.rows
+        let columnCount = renderedRows.first?.count ?? 0
 
         var widths = (0..<columnCount).map { column -> CGFloat in
-            let maxTextWidth = allRows.enumerated().map { rowIndex, row -> CGFloat in
+            let maxTextWidth = renderedRows.map { row -> CGFloat in
                 guard row.indices.contains(column) else { return 0 }
-                let font = rowIndex == 0 ? headerFont : bodyFont
-                return textWidth(row[column], font: font)
+                return attributedTextWidth(row[column])
             }.max() ?? 0
 
             return min(
@@ -183,7 +202,7 @@ private enum MarkdownTableRenderer {
     }
 
     private static func resolvedRowHeight(
-        row: [String],
+        row: [NSAttributedString],
         isHeader: Bool,
         columnWidths: [CGFloat],
         headerFont: NSFont,
@@ -192,7 +211,7 @@ private enum MarkdownTableRenderer {
     ) -> CGFloat {
         let font = isHeader ? headerFont : bodyFont
         let contentHeights = columnWidths.enumerated().map { column, width -> CGFloat in
-            let text = row.indices.contains(column) ? row[column] : ""
+            let text = row.indices.contains(column) ? row[column] : NSAttributedString()
             let contentWidth = max(12, width - config.cellHorizontalPadding * 2)
             return textHeight(text, font: font, width: contentWidth)
         }
@@ -202,11 +221,10 @@ private enum MarkdownTableRenderer {
 
     private static func drawTable(
         table: MarkdownTable,
+        renderedRows: [[NSAttributedString]],
         rect: CGRect,
         columnWidths: [CGFloat],
         rowHeights: [CGFloat],
-        headerFont: NSFont,
-        bodyFont: NSFont,
         theme: MarkdownEditorTheme,
         config: TableStyle
     ) {
@@ -222,15 +240,12 @@ private enum MarkdownTableRenderer {
         let headerBackground = theme.bodyText.withAlphaComponent(0.10)
         let stripeBackground = theme.bodyText.withAlphaComponent(0.055)
         let borderColor = theme.mutedText.withAlphaComponent(0.28)
-        let headerTextColor = theme.bodyText.withAlphaComponent(0.92)
-        let bodyTextColor = theme.bodyText.withAlphaComponent(0.78)
 
         backgroundColor.setFill()
         rect.fill()
 
         var y: CGFloat = 0
-        let rows = [table.header] + table.rows
-        for (rowIndex, row) in rows.enumerated() {
+        for (rowIndex, row) in renderedRows.enumerated() {
             let rowHeight = rowHeights[rowIndex]
             let rowRect = CGRect(x: 0, y: y, width: rect.width, height: rowHeight)
 
@@ -244,13 +259,11 @@ private enum MarkdownTableRenderer {
 
             var x: CGFloat = 0
             for (column, columnWidth) in columnWidths.enumerated() {
-                let cell = row.indices.contains(column) ? row[column] : ""
-                let font = rowIndex == 0 ? headerFont : bodyFont
-                let color = rowIndex == 0 ? headerTextColor : bodyTextColor
+                let cell = row.indices.contains(column) ? row[column] : NSAttributedString()
                 let alignment = table.alignments.indices.contains(column) ? table.alignments[column] : .left
                 let cellRect = CGRect(x: x, y: y, width: columnWidth, height: rowHeight)
                     .insetBy(dx: config.cellHorizontalPadding, dy: config.cellVerticalPadding)
-                drawText(cell, in: cellRect, font: font, color: color, alignment: alignment)
+                drawText(cell, in: cellRect, alignment: alignment)
                 x += columnWidth
             }
 
@@ -284,13 +297,12 @@ private enum MarkdownTableRenderer {
     }
 
     private static func drawText(
-        _ text: String,
+        _ text: NSAttributedString,
         in rect: CGRect,
-        font: NSFont,
-        color: NSColor,
         alignment: MarkdownTableAlignment
     ) {
-        guard !text.isEmpty else { return }
+        guard text.length > 0 else { return }
+        let mutableText = NSMutableAttributedString(attributedString: text)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byWordWrapping
         switch alignment {
@@ -301,36 +313,93 @@ private enum MarkdownTableRenderer {
         case .right:
             paragraph.alignment = .right
         }
+        mutableText.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: mutableText.length))
 
-        (text as NSString).draw(
+        mutableText.draw(
             with: rect,
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [
-                .font: font,
-                .foregroundColor: color,
-                .paragraphStyle: paragraph
-            ]
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
     }
 
-    private static func textWidth(_ text: String, font: NSFont) -> CGFloat {
-        guard !text.isEmpty else { return 0 }
-        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    private static func attributedCellText(
+        _ text: String,
+        font: NSFont,
+        color: NSColor,
+        ctx: MarkdownStyler.StylingContext
+    ) -> NSAttributedString {
+        let fallbackAttributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color
+        ]
+        let output = NSMutableAttributedString()
+        let nsText = text as NSString
+        let inlineLatexTokens = MarkdownTokenizer.parseTokens(in: text)
+            .filter { $0.kind == .inlineLatex }
+            .sorted { $0.range.location < $1.range.location }
+
+        var cursor = 0
+        for token in inlineLatexTokens {
+            guard token.range.location >= cursor,
+                  NSMaxRange(token.range) <= nsText.length else {
+                continue
+            }
+
+            if token.range.location > cursor {
+                let plainRange = NSRange(location: cursor, length: token.range.location - cursor)
+                output.append(NSAttributedString(
+                    string: nsText.substring(with: plainRange),
+                    attributes: fallbackAttributes
+                ))
+            }
+
+            let rawToken = nsText.substring(with: token.range)
+            let latexContent = nsText.substring(with: token.contentRange)
+            if let entry = ctx.services.latex.render(latex: latexContent, fontSize: font.pointSize, theme: ctx.configuration.theme) {
+                let attachment = NSTextAttachment()
+                attachment.image = entry.image
+                attachment.bounds = CGRect(
+                    x: 0,
+                    y: -entry.baselineOffset,
+                    width: entry.size.width,
+                    height: entry.size.height
+                )
+                output.append(NSAttributedString(attachment: attachment))
+            } else {
+                output.append(NSAttributedString(
+                    string: rawToken,
+                    attributes: fallbackAttributes
+                ))
+            }
+            cursor = NSMaxRange(token.range)
+        }
+
+        if cursor < nsText.length {
+            let tailRange = NSRange(location: cursor, length: nsText.length - cursor)
+            output.append(NSAttributedString(
+                string: nsText.substring(with: tailRange),
+                attributes: fallbackAttributes
+            ))
+        }
+
+        return output
     }
 
-    private static func textHeight(_ text: String, font: NSFont, width: CGFloat) -> CGFloat {
+    private static func attributedTextWidth(_ text: NSAttributedString) -> CGFloat {
+        guard text.length > 0 else { return 0 }
+        return ceil(text.size().width)
+    }
+
+    private static func textHeight(_ text: NSAttributedString, font: NSFont, width: CGFloat) -> CGFloat {
         let fallbackLineHeight = ceil(font.ascender - font.descender + font.leading)
-        guard !text.isEmpty else { return fallbackLineHeight }
+        guard text.length > 0 else { return fallbackLineHeight }
 
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byWordWrapping
-        let bounds = (text as NSString).boundingRect(
+        let mutableText = NSMutableAttributedString(attributedString: text)
+        mutableText.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: mutableText.length))
+        let bounds = mutableText.boundingRect(
             with: CGSize(width: width, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [
-                .font: font,
-                .paragraphStyle: paragraph
-            ]
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
         return max(fallbackLineHeight, ceil(bounds.height))
     }

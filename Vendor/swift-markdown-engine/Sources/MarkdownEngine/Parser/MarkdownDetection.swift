@@ -34,6 +34,9 @@ enum MarkdownDetection {
                 continue
             }
             if caretLocation == end {
+                if token.kind == .table {
+                    continue
+                }
                 let lastIndex = end - 1
                 if lastIndex >= start && lastIndex < text.length {
                     let lastChar = text.substring(with: NSRange(location: lastIndex, length: 1))
