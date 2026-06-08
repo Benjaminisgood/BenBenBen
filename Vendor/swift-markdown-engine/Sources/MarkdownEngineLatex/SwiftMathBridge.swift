@@ -93,7 +93,7 @@ public final class SwiftMathBridge: LatexRenderer, @unchecked Sendable {
         }
         cacheLock.unlock()
 
-        guard let entry = renderLatex(normalizedLatex, fontSize: fontSize, textColor: textColor) else {
+        guard let entry = renderDisplayLatex(normalizedLatex, fontSize: fontSize, textColor: textColor) else {
             return nil
         }
 
@@ -305,6 +305,91 @@ public final class SwiftMathBridge: LatexRenderer, @unchecked Sendable {
         let g = UInt32(max(0, min(255, Int(rgb.greenComponent * 255))))
         let b = UInt32(max(0, min(255, Int(rgb.blueComponent * 255))))
         return (r << 16) | (g << 8) | b
+    }
+
+    private func renderDisplayLatex(_ latex: String, fontSize: CGFloat, textColor: NSColor) -> CacheEntry? {
+        if let boxedContent = Self.outerBoxedContent(in: latex) {
+            guard let innerEntry = renderDisplayLatex(boxedContent, fontSize: fontSize, textColor: textColor) else {
+                return nil
+            }
+            return Self.renderBoxedEntry(innerEntry, textColor: textColor)
+        }
+
+        return renderLatex(latex, fontSize: fontSize, textColor: textColor)
+    }
+
+    private static func outerBoxedContent(in latex: String) -> String? {
+        var cursor = latex.startIndex
+        while cursor < latex.endIndex && latex[cursor].isWhitespace {
+            cursor = latex.index(after: cursor)
+        }
+
+        guard cursor < latex.endIndex,
+              latex[cursor] == "\\" else { return nil }
+
+        let commandStart = latex.index(after: cursor)
+        let commandEnd = commandStart < latex.endIndex
+            ? latex[commandStart...].firstIndex(where: { !$0.isLetter }) ?? latex.endIndex
+            : latex.endIndex
+        guard latex[commandStart..<commandEnd] == "boxed" else { return nil }
+
+        cursor = commandEnd
+        while cursor < latex.endIndex && latex[cursor].isWhitespace {
+            cursor = latex.index(after: cursor)
+        }
+
+        guard cursor < latex.endIndex,
+              latex[cursor] == "{",
+              let closeBrace = matchingBrace(in: latex, openBrace: cursor) else {
+            return nil
+        }
+
+        let remainderStart = latex.index(after: closeBrace)
+        let remainder = String(latex[remainderStart...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard remainder.isEmpty else { return nil }
+
+        let contentStart = latex.index(after: cursor)
+        return String(latex[contentStart..<closeBrace])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func renderBoxedEntry(_ entry: CacheEntry, textColor: NSColor) -> CacheEntry? {
+        let padding = max(4, ceil(entry.size.height * 0.12))
+        let strokeWidth: CGFloat = 1.2
+        let frameSize = CGSize(
+            width: ceil(entry.size.width + padding * 2),
+            height: ceil(entry.size.height + padding * 2)
+        )
+        guard frameSize.width > 0, frameSize.height > 0 else { return nil }
+
+        let image = NSImage(size: frameSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        entry.image.draw(
+            in: CGRect(x: padding, y: padding, width: entry.size.width, height: entry.size.height),
+            from: CGRect(origin: .zero, size: entry.size),
+            operation: .sourceOver,
+            fraction: 1.0
+        )
+
+        let boxRect = CGRect(
+            x: strokeWidth / 2,
+            y: strokeWidth / 2,
+            width: frameSize.width - strokeWidth,
+            height: frameSize.height - strokeWidth
+        )
+        let path = NSBezierPath(rect: boxRect)
+        path.lineWidth = strokeWidth
+        textColor.withAlphaComponent(0.95).setStroke()
+        path.stroke()
+
+        return CacheEntry(
+            image: image,
+            size: frameSize,
+            baselineOffset: entry.baselineOffset + padding
+        )
     }
 
     private func renderLatex(_ latex: String, fontSize: CGFloat, textColor: NSColor) -> CacheEntry? {
