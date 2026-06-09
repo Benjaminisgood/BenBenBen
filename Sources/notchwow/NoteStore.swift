@@ -105,7 +105,7 @@ final class NoteStore: ObservableObject {
     func updateText(_ nextText: String) {
         tabs[activeIndex].text = nextText
         clampSelection(for: tabs[activeIndex].id)
-        persistActiveTabToDisk(allowRename: true)
+        persistActiveTabToDisk(allowRename: shouldAutoRenameDraft(tabs[activeIndex]))
         save()
     }
 
@@ -137,7 +137,7 @@ final class NoteStore: ObservableObject {
     }
 
     func openActiveTabInDefaultEditor() {
-        persistActiveTabToDisk(allowRename: true)
+        persistActiveTabToDisk(allowRename: false)
         guard let url = activeTab.fileURL else {
             lastError = "Could not open Markdown file: missing file path."
             return
@@ -330,6 +330,13 @@ final class NoteStore: ObservableObject {
         let location = min(max(range.location, 0), length)
         let selectionLength = min(max(range.length, 0), length - location)
         return NSRange(location: location, length: selectionLength)
+    }
+
+    private func shouldAutoRenameDraft(_ tab: NoteTab) -> Bool {
+        guard let fileURL = tab.fileURL else { return true }
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        return stem == "Untitled"
+            || stem.range(of: #"^Untitled \d+$"#, options: .regularExpression) != nil
     }
 
     private func save() {
