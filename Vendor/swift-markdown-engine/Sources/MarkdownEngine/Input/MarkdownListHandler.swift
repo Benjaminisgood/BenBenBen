@@ -59,7 +59,7 @@ struct MarkdownLists {
         let extraLineHeight = configuration.lists.extraLineHeight
         let spaceWidth = (" " as NSString).size(withAttributes: [.font: baseFont]).width
 
-        func applyListMatches(_ matches: [NSTextCheckingResult]) {
+        func applyListMatches(_ matches: [NSTextCheckingResult], drawsBulletMarker: Bool = false) {
             for match in matches {
                 let ps = NSMutableParagraphStyle()
                 ps.minimumLineHeight = defaultLineHeight + extraLineHeight
@@ -88,6 +88,13 @@ struct MarkdownLists {
                 ps.headIndent = depthIndent + markerWidth + extraSpacing
 
                 attributesList.append((match.range(at: 0), [.paragraphStyle: ps]))
+
+                if drawsBulletMarker && !hasCheckbox && markerRange.location != NSNotFound && markerRange.length > 0 {
+                    attributesList.append((NSRange(location: markerRange.location, length: 1), [
+                        .foregroundColor: NSColor.clear,
+                        .markdownListBullet: true
+                    ]))
+                }
             }
         }
 
@@ -100,7 +107,7 @@ struct MarkdownLists {
         // Bullet lists
         let bulletListPattern = #"^([ \t]*)([-•](?:[ \t]+\[[ xX]\])?[ \t]+)(.*)$"#
         if let bulletListRegex = try? NSRegularExpression(pattern: bulletListPattern, options: [.anchorsMatchLines]) {
-            applyListMatches(bulletListRegex.matches(in: text, options: [], range: fullRange))
+            applyListMatches(bulletListRegex.matches(in: text, options: [], range: fullRange), drawsBulletMarker: true)
         }
         return attributesList
     }

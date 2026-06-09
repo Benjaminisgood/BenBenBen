@@ -15,3 +15,16 @@ xcrun swiftc \
   -o "$TMP_DIR/notchwow-logic-tests"
 
 "$TMP_DIR/notchwow-logic-tests"
+
+MARKDOWN_ENGINE_SOURCES=()
+while IFS= read -r source_file; do
+  MARKDOWN_ENGINE_SOURCES+=("$source_file")
+done < <(find "$ROOT_DIR/Vendor/swift-markdown-engine/Sources/MarkdownEngine" -name '*.swift' | sort)
+
+xcrun swiftc \
+  -parse-as-library \
+  "${MARKDOWN_ENGINE_SOURCES[@]}" \
+  "$ROOT_DIR/Tests/MarkdownEngineSmokeTests/main.swift" \
+  -o "$TMP_DIR/markdown-engine-smoke-tests"
+
+"$TMP_DIR/markdown-engine-smoke-tests"

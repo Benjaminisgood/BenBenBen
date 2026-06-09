@@ -77,6 +77,7 @@ public final class NativeTextViewCoordinator: NSObject, NSTextViewDelegate {
         let wikiLinkTokens: [MarkdownToken]
         let imageEmbedTokens: [MarkdownToken]
         let tableTokens: [MarkdownToken]
+        let calloutTokens: [MarkdownToken]
     }
 
     enum InlineTokenContext {

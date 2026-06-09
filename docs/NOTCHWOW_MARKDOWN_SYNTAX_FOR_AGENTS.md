@@ -72,6 +72,9 @@ Agents may use normal Markdown:
 
 > Quote
 
+> [!important]
+> Important notes render as callouts.
+
 [External link](https://example.com)
 
 ```swift

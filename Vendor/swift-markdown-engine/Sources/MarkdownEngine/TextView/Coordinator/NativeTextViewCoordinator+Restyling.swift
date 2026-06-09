@@ -124,12 +124,14 @@ extension NativeTextViewCoordinator {
         var wikiLinkTokens: [MarkdownToken] = []
         var imageEmbedTokens: [MarkdownToken] = []
         var tableTokens: [MarkdownToken] = []
+        var calloutTokens: [MarkdownToken] = []
 
         codeTokens.reserveCapacity(tokens.count / 2)
         latexTokens.reserveCapacity(tokens.count / 4)
         blockLatexTokens.reserveCapacity(tokens.count / 4)
         wikiLinkTokens.reserveCapacity(tokens.count / 4)
         tableTokens.reserveCapacity(tokens.count / 8)
+        calloutTokens.reserveCapacity(tokens.count / 8)
 
         for token in tokens {
             switch token.kind {
@@ -145,6 +147,8 @@ extension NativeTextViewCoordinator {
                 imageEmbedTokens.append(token)
             case .table:
                 tableTokens.append(token)
+            case .callout:
+                calloutTokens.append(token)
             default:
                 break
             }
@@ -157,7 +161,8 @@ extension NativeTextViewCoordinator {
             blockLatexTokens: blockLatexTokens,
             wikiLinkTokens: wikiLinkTokens,
             imageEmbedTokens: imageEmbedTokens,
-            tableTokens: tableTokens
+            tableTokens: tableTokens,
+            calloutTokens: calloutTokens
         )
         cachedParsedText = text
         cachedParsedDocument = parsed
@@ -205,7 +210,7 @@ extension NativeTextViewCoordinator {
             let token = tokens[idx]
             paragraphs.append(text.paragraphRange(for: token.range))
 
-            if token.kind == .codeBlock || token.kind == .blockLatex || token.kind == .table {
+            if token.kind == .codeBlock || token.kind == .blockLatex || token.kind == .table || token.kind == .callout {
                 for markerRange in token.markerRanges {
                     paragraphs.append(text.paragraphRange(for: markerRange))
                 }

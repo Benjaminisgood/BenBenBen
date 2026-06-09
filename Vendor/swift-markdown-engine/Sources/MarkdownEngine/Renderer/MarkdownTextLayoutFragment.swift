@@ -59,7 +59,8 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
         // 3. Normal text
         super.draw(at: point, in: context)
 
-        // 4. Task checkboxes (on top of hidden [ ]/[x] markers)
+        // 4. List bullets and task checkboxes (on top of hidden markers)
+        drawListBullets(at: point, in: context)
         drawTaskCheckboxes(at: point, in: context)
     }
 
@@ -310,6 +311,61 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
     }
 
     // MARK: - Task List Checkboxes
+
+    private func drawListBullets(at point: CGPoint, in context: CGContext) {
+        guard let ts = textStorage, let range = fragmentNSRange, range.length > 0 else { return }
+        let selectionRanges: [NSRange] = {
+            guard let tv = textLayoutManager?.textContainer?.textView else { return [] }
+            return tv.selectedRanges.map { $0.rangeValue }.filter { $0.length > 0 }
+        }()
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
+        NSGraphicsContext.current = nsContext
+
+        ts.enumerateAttribute(.markdownListBullet, in: range, options: []) { [weak self] value, attrRange, _ in
+            guard let self, value != nil else { return }
+            if selectionRanges.contains(where: { NSIntersectionRange($0, attrRange).length > 0 }) { return }
+            guard let pos = drawPosition(forDocumentCharAt: attrRange.location, point: point) else { return }
+
+            let font = (ts.attribute(.font, at: attrRange.location, effectiveRange: nil) as? NSFont)
+                ?? (textLayoutManager?.textContainer?.textView?.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize))
+            let markerText = (ts.string as NSString).substring(with: attrRange)
+            let markerWidth = max(
+                1,
+                (markerText as NSString).size(withAttributes: [.font: font]).width
+            )
+            let ascent = max(0, font.ascender)
+            let descent = max(0, -font.descender)
+            let dotSize = max(4.0, min(6.0, floor(font.pointSize * 0.38)))
+            let centerY = pos.baselineY + (descent - ascent) / 2
+            let dotRect = CGRect(
+                x: pos.x + markerWidth / 2 - dotSize / 2,
+                y: centerY - dotSize / 2,
+                width: dotSize,
+                height: dotSize
+            )
+
+            let scale = textLayoutManager?.textContainer?.textView?.window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor ?? 2.0
+            func alignToPixel(_ value: CGFloat) -> CGFloat {
+                (value * scale).rounded(.toNearestOrAwayFromZero) / scale
+            }
+
+            let alignedRect = CGRect(
+                x: alignToPixel(dotRect.origin.x),
+                y: alignToPixel(dotRect.origin.y),
+                width: dotSize,
+                height: dotSize
+            )
+            guard !alignedRect.isEmpty, !alignedRect.isNull else { return }
+
+            let configuration = (textLayoutManager?.textContainer?.textView as? NativeTextView)?.configuration ?? .default
+            configuration.theme.bodyText.withAlphaComponent(0.72).setFill()
+            NSBezierPath(ovalIn: alignedRect).fill()
+        }
+    }
 
     private func drawTaskCheckboxes(at point: CGPoint, in context: CGContext) {
         guard let ts = textStorage, let range = fragmentNSRange, range.length > 0 else { return }

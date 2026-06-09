@@ -194,12 +194,7 @@ enum MarkdownTokenizer {
             }
         }
 
-        // GitHub-style pipe tables:
-        //
-        // | Header | Header |
-        // | ------ | :----: |
-        // | Cell   | Cell   |
-        let blockRanges = tokens.compactMap { token -> NSRange? in
+        let opaqueBlockRanges = tokens.compactMap { token -> NSRange? in
             switch token.kind {
             case .codeBlock, .blockLatex:
                 return token.range
@@ -207,7 +202,34 @@ enum MarkdownTokenizer {
                 return nil
             }
         }
-        for table in MarkdownTableParser.parseTables(in: text, excluding: blockRanges) {
+
+        // Obsidian-style callouts:
+        //
+        // > [!important]
+        // > Message
+        for callout in MarkdownCalloutParser.parseCallouts(in: text, excluding: opaqueBlockRanges) {
+            tokens.append(MarkdownToken(
+                kind: .callout,
+                range: callout.range,
+                contentRange: callout.range,
+                markerRanges: []
+            ))
+        }
+
+        // GitHub-style pipe tables:
+        //
+        // | Header | Header |
+        // | ------ | :----: |
+        // | Cell   | Cell   |
+        let tableExcludedRanges = tokens.compactMap { token -> NSRange? in
+            switch token.kind {
+            case .codeBlock, .blockLatex, .callout:
+                return token.range
+            default:
+                return nil
+            }
+        }
+        for table in MarkdownTableParser.parseTables(in: text, excluding: tableExcludedRanges) {
             tokens.append(MarkdownToken(
                 kind: .table,
                 range: table.range,
@@ -238,7 +260,7 @@ enum MarkdownTokenizer {
                 let full = match.range(at: 0)
                 let content = match.range(at: 1)
                 let isInsideBlock = tokens.contains {
-                    ($0.kind == .codeBlock || $0.kind == .blockLatex || $0.kind == .table) &&
+                    ($0.kind == .codeBlock || $0.kind == .blockLatex || $0.kind == .table || $0.kind == .callout) &&
                     NSIntersectionRange($0.range, full).length > 0
                 }
                 if isInsideBlock { continue }
@@ -258,7 +280,7 @@ enum MarkdownTokenizer {
             let full = match.range(at: 0)
             let isInsideOpaqueToken = tokens.contains { token in
                 switch token.kind {
-                case .codeBlock, .inlineCode, .blockLatex, .inlineLatex, .table:
+                case .codeBlock, .inlineCode, .blockLatex, .inlineLatex, .table, .callout:
                     return range(token.range, contains: full)
                 default:
                     return false

@@ -13,6 +13,7 @@ import Foundation
 extension NSAttributedString.Key {
     public static let wikiLinkID = NSAttributedString.Key("NodeLinkID")
     public static let taskCheckbox = NSAttributedString.Key("TaskCheckbox")
+    static let markdownListBullet = NSAttributedString.Key("MarkdownListBullet")
 }
 
 enum MarkdownTokenKind {
@@ -28,6 +29,7 @@ enum MarkdownTokenKind {
     case blockLatex
     case inlineLatex
     case table
+    case callout
     case imageEmbed
 }
 

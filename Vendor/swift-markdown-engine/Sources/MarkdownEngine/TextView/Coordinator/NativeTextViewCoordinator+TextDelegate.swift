@@ -134,7 +134,7 @@ extension NativeTextViewCoordinator {
             effectiveParagraphCandidates = [NSRange(location: 0, length: fullText.length)]
         }
         // Always restyle paragraphs containing rendered block tokens to avoid stale raw text.
-        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens + parsed.tableTokens).map { fullText.paragraphRange(for: $0.range) }
+        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens + parsed.tableTokens + parsed.calloutTokens).map { fullText.paragraphRange(for: $0.range) }
         effectiveParagraphCandidates.append(contentsOf: latexParagraphs)
         effectiveParagraphCandidates.append(contentsOf: tokenRestyleParagraphs(
             in: fullText,
@@ -204,7 +204,7 @@ extension NativeTextViewCoordinator {
             paragraphCandidates.append(prevPara)
         }
         // Also restyle paragraphs containing rendered block tokens to refresh rendering.
-        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens + parsed.tableTokens).map { nsText.paragraphRange(for: $0.range) }
+        let latexParagraphs = (latexTokens + blockLatexTokens + parsed.imageEmbedTokens + parsed.tableTokens + parsed.calloutTokens).map { nsText.paragraphRange(for: $0.range) }
         paragraphCandidates.append(contentsOf: latexParagraphs)
         paragraphCandidates.append(contentsOf: tokenRestyleParagraphs(
             in: nsText,
@@ -231,7 +231,8 @@ extension NativeTextViewCoordinator {
                 guard token.kind == .inlineLatex
                     || token.kind == .blockLatex
                     || token.kind == .imageEmbed
-                    || token.kind == .table else {
+                    || token.kind == .table
+                    || token.kind == .callout else {
                     continue
                 }
                 let selectRange = token.contentRange

@@ -24,7 +24,7 @@ enum MarkdownDetection {
             let start = token.range.location
             let end = NSMaxRange(token.range)
             if selectionRange.length > 0
-                && (token.kind == .inlineLatex || token.kind == .blockLatex || token.kind == .table)
+                && (token.kind == .inlineLatex || token.kind == .blockLatex || token.kind == .table || token.kind == .callout)
                 && NSIntersectionRange(selectionRange, token.range).length > 0 {
                 indices.insert(index)
                 continue
@@ -34,7 +34,7 @@ enum MarkdownDetection {
                 continue
             }
             if caretLocation == end {
-                if token.kind == .blockLatex || token.kind == .table {
+                if token.kind == .blockLatex || token.kind == .table || token.kind == .callout {
                     continue
                 }
                 let lastIndex = end - 1
