@@ -5,6 +5,7 @@ import SwiftUI
 
 struct LaunchdTopToolsView: View {
     @ObservedObject var jobStore: LaunchdJobStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @State private var isShowingSearchResults = false
     @State private var isConfirmingTrash = false
 
@@ -15,6 +16,15 @@ struct LaunchdTopToolsView: View {
                 detail: jobStore.selectedJob?.detail ?? "\(jobStore.jobs.count) plists",
                 systemImage: "clock.arrow.2.circlepath"
             )
+
+            FilePermissionLockButton(
+                lockStore: fileLockStore,
+                fileURL: jobStore.selectedJob?.plistURL
+            )
+
+            if let error = fileLockStore.lastError {
+                StoreErrorBadge(message: error)
+            }
 
             ToolbarSearchField(
                 placeholder: "plist",
@@ -102,6 +112,7 @@ struct LaunchdJobSearchResultsPopover: View {
 
 struct LaunchdPane: View {
     @ObservedObject var jobStore: LaunchdJobStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var aiAgent: LaunchdAIAgent
     @ObservedObject var settingsStore: AppSettingsStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
@@ -118,6 +129,7 @@ struct LaunchdPane: View {
                 .foregroundStyle(.white.opacity(0.9))
                 .scrollContentBackground(.hidden)
                 .background(Color(red: 0.045, green: 0.047, blue: 0.055))
+                .disabled(fileLockStore.isLocked(jobStore.selectedJob?.plistURL))
                 .frame(width: size.width, height: editorHeight)
 
             Rectangle()
@@ -133,6 +145,7 @@ struct LaunchdPane: View {
 
             LaunchdInputToolbar(
                 jobStore: jobStore,
+                fileLockStore: fileLockStore,
                 aiAgent: aiAgent,
                 settingsStore: settingsStore,
                 directoryStore: directoryStore
@@ -170,6 +183,7 @@ struct LaunchdPane: View {
 
 struct LaunchdInputToolbar: View {
     @ObservedObject var jobStore: LaunchdJobStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var aiAgent: LaunchdAIAgent
     @ObservedObject var settingsStore: AppSettingsStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
@@ -215,7 +229,7 @@ struct LaunchdInputToolbar: View {
                     .frame(width: 26, height: 24)
             }
             .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(!aiAgent.canSubmit)
+            .disabled(!aiAgent.canSubmit || isSelectedJobLocked)
             .help("AI 生成 plist")
 
             Button {
@@ -225,7 +239,7 @@ struct LaunchdInputToolbar: View {
                     .frame(width: 26, height: 24)
             }
             .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(jobStore.selectedJob == nil)
+            .disabled(jobStore.selectedJob == nil || isSelectedJobLocked)
             .help("Save plist")
 
             Button {
@@ -256,6 +270,7 @@ struct LaunchdInputToolbar: View {
     }
 
     private func submitAI() {
+        guard !isSelectedJobLocked else { return }
         let context = LaunchdAIContext(
             existingJobs: jobStore.jobs,
             availableShellScripts: listScripts(in: WorkspacePaths.shellWorkspaceScriptRoot, ext: "sh"),
@@ -266,6 +281,10 @@ struct LaunchdInputToolbar: View {
             pythonExecutablePath: directoryStore.condaPythonExecutableURL.path
         )
         aiAgent.submit(settings: settingsStore, context: context)
+    }
+
+    private var isSelectedJobLocked: Bool {
+        fileLockStore.isLocked(jobStore.selectedJob?.plistURL)
     }
 
     private func listScripts(in directory: URL, ext: String) -> [String] {

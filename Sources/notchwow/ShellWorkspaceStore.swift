@@ -66,6 +66,10 @@ final class ShellWorkspaceStore: ObservableObject {
 
     func moveActiveWorkspaceToTrash() {
         let workspace = activeWorkspace
+        if let message = FilePermissionLock.modificationBlockedMessage(for: workspace.scriptURL, action: "Move to Trash") {
+            lastError = message
+            return
+        }
         NSWorkspace.shared.recycle([
             workspace.transcriptURL,
             workspace.inputURL,
@@ -90,6 +94,10 @@ final class ShellWorkspaceStore: ObservableObject {
     }
 
     func updateScriptText(_ nextText: String) {
+        if let message = FilePermissionLock.modificationBlockedMessage(for: activeWorkspace.scriptURL, action: "Save") {
+            lastError = message
+            return
+        }
         scriptText = nextText
         do {
             try Self.writeScriptText(nextText, for: activeWorkspace)

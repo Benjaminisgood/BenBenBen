@@ -32,6 +32,7 @@ final class NotchPanelController: NSObject {
     private lazy var imageStore = LocalImageStore(markdownRootURL: directoryStore.markdownWorkingDirectoryURL)
     private let markdownAIStore = MarkdownAIEditStore()
     private let markdownAIChatStore = MarkdownAIChatStore()
+    private let fileLockStore = FilePermissionLockStore()
     private let drawerState = DrawerState()
     private let editorInteractionState = EditorInteractionState()
     private let workbenchState = WorkbenchState()
@@ -300,6 +301,7 @@ final class NotchPanelController: NSObject {
             imageStore: imageStore,
             markdownAIStore: markdownAIStore,
             markdownAIChatStore: markdownAIChatStore,
+            fileLockStore: fileLockStore,
             drawerState: drawerState,
             editorInteractionState: editorInteractionState,
             workbenchState: workbenchState,

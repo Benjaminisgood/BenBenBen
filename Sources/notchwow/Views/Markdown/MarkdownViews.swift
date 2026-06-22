@@ -9,6 +9,7 @@ struct MarkdownEditorPanel: View {
     let imageStore: LocalImageStore
     @ObservedObject var aiStore: MarkdownAIEditStore
     @ObservedObject var chatStore: MarkdownAIChatStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     let editorInteractionState: EditorInteractionState
     let size: CGSize
 
@@ -23,6 +24,7 @@ struct MarkdownEditorPanel: View {
             MarkdownNoteEditor(
                 store: store,
                 imageStore: imageStore,
+                fileLockStore: fileLockStore,
                 editorInteractionState: editorInteractionState
             )
             .frame(width: size.width, height: editorHeight)
@@ -56,7 +58,8 @@ struct MarkdownEditorPanel: View {
                 onRejectAI: aiStore.rejectProposal,
                 onOptimizeMarkdown: optimizeCurrentMarkdown,
                 onPracticeMarkdown: startPracticeSession,
-                onOpenExternally: store.openActiveTabInDefaultEditor
+                onOpenExternally: store.openActiveTabInDefaultEditor,
+                isReadOnly: isActiveFileLocked
             )
                 .frame(width: size.width, height: toolbarHeight)
                 .background(Color(red: 0.055, green: 0.055, blue: 0.065))
@@ -67,7 +70,12 @@ struct MarkdownEditorPanel: View {
         max(size.height - outputHeight - toolbarHeight - separatorHeight * 2, 120)
     }
 
+    private var isActiveFileLocked: Bool {
+        fileLockStore.isLocked(store.activeTab.fileURL)
+    }
+
     private func submitAIEdit(selectedRange explicitRange: NSRange? = nil) {
+        guard !isActiveFileLocked else { return }
         let range = explicitRange
             ?? editorInteractionState.currentSelectionRange()
             ?? store.selectionRange(for: store.activeTabID)
@@ -82,6 +90,7 @@ struct MarkdownEditorPanel: View {
     }
 
     private func optimizeCurrentMarkdown() {
+        guard !isActiveFileLocked else { return }
         guard !aiStore.isRunning else { return }
         withAnimation(.easeOut(duration: 0.15)) {
             aiMode = .edit
@@ -104,6 +113,7 @@ struct MarkdownEditorPanel: View {
     }
 
     private func acceptAIEdit() {
+        guard !isActiveFileLocked else { return }
         guard let proposal = aiStore.proposal else { return }
         guard proposal.tabID == store.activeTabID,
               proposal.originalDocument == store.text else {
@@ -136,6 +146,7 @@ struct MarkdownEditorPanel: View {
 }
 struct MarkdownTopToolsView: View {
     @ObservedObject var store: NoteStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     let editorInteractionState: EditorInteractionState
     @State private var isShowingSearchResults = false
     @State private var isConfirmingTrash = false
@@ -148,7 +159,15 @@ struct MarkdownTopToolsView: View {
                 systemImage: "doc.text"
             )
 
+            FilePermissionLockButton(
+                lockStore: fileLockStore,
+                fileURL: store.activeTab.fileURL
+            )
+
             if let error = store.lastError {
+                StoreErrorBadge(message: error)
+            }
+            if let error = fileLockStore.lastError {
                 StoreErrorBadge(message: error)
             }
 
@@ -217,6 +236,7 @@ struct MarkdownWorkspaceView: View {
     let imageStore: LocalImageStore
     @ObservedObject var markdownAIStore: MarkdownAIEditStore
     @ObservedObject var markdownAIChatStore: MarkdownAIChatStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     let editorInteractionState: EditorInteractionState
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     let size: CGSize
@@ -228,6 +248,7 @@ struct MarkdownWorkspaceView: View {
             imageStore: imageStore,
             aiStore: markdownAIStore,
             chatStore: markdownAIChatStore,
+            fileLockStore: fileLockStore,
             editorInteractionState: editorInteractionState,
             size: size
         )
@@ -464,6 +485,7 @@ struct MarkdownShortcutToolbar: View {
     let onOptimizeMarkdown: () -> Void
     let onPracticeMarkdown: () -> Void
     let onOpenExternally: () -> Void
+    let isReadOnly: Bool
 
     @State private var isConfirmingOptimization = false
 
@@ -478,7 +500,8 @@ struct MarkdownShortcutToolbar: View {
                     chatStore: chatStore,
                     aiMode: aiMode,
                     onSubmitAI: onSubmitAI,
-                    onSubmitChat: onSubmitChat
+                    onSubmitChat: onSubmitChat,
+                    isReadOnly: isReadOnly
                 )
                 .frame(width: composerWidth(for: proxy.size.width), height: 26)
 
@@ -509,6 +532,7 @@ struct MarkdownShortcutToolbar: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(MarkdownToolbarButtonStyle())
+                .disabled(isReadOnly)
                 .help(command.help)
             }
 
@@ -533,7 +557,7 @@ struct MarkdownShortcutToolbar: View {
                         .frame(width: 26, height: 24)
                 }
                 .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(aiStore.isRunning)
+                .disabled(aiStore.isRunning || isReadOnly)
                 .help("Apply AI edit")
 
                 Button(action: onRejectAI) {
@@ -563,7 +587,7 @@ struct MarkdownShortcutToolbar: View {
                         .frame(width: 26, height: 24)
                 }
                 .buttonStyle(MarkdownToolbarButtonStyle())
-                .disabled(aiStore.isRunning)
+                .disabled(aiStore.isRunning || isReadOnly)
                 .help("Optimize this Markdown file")
 
                 Button(action: onPracticeMarkdown) {
@@ -595,6 +619,7 @@ struct MarkdownAIComposer: View {
     let aiMode: MarkdownAIMode
     let onSubmitAI: () -> Void
     let onSubmitChat: () -> Void
+    let isReadOnly: Bool
 
     var body: some View {
         HStack(spacing: 6) {
@@ -610,10 +635,10 @@ struct MarkdownAIComposer: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.86))
-                .disabled(aiMode == .edit ? aiStore.isRunning : chatStore.isRunning)
+                .disabled(aiMode == .edit ? (aiStore.isRunning || isReadOnly) : chatStore.isRunning)
                 .onSubmit {
                     if aiMode == .edit {
-                        if aiStore.canSubmit { onSubmitAI() }
+                        if aiStore.canSubmit, !isReadOnly { onSubmitAI() }
                     } else {
                         if chatStore.canSubmit { onSubmitChat() }
                     }
@@ -624,7 +649,7 @@ struct MarkdownAIComposer: View {
                     .frame(width: 24, height: 22)
             }
             .buttonStyle(MarkdownToolbarButtonStyle())
-            .disabled(aiMode == .edit ? !aiStore.canSubmit : !chatStore.canSubmit)
+            .disabled(aiMode == .edit ? (!aiStore.canSubmit || isReadOnly) : !chatStore.canSubmit)
             .help(aiMode == .edit ? "Ask AI to edit" : "Send message")
         }
         .padding(.leading, 8)
@@ -666,6 +691,7 @@ struct MarkdownCommandLabel: View {
 struct MarkdownNoteEditor: View {
     @ObservedObject var store: NoteStore
     let imageStore: LocalImageStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     let editorInteractionState: EditorInteractionState
     @State private var isWikiLinkActive = false
     @State private var pendingInlineReplacement: InlineReplacementRequest?
@@ -683,7 +709,7 @@ struct MarkdownNoteEditor: View {
             fontName: "SF Pro",
             fontSize: 15,
             documentId: store.activeTabID.uuidString,
-            isEditable: true,
+            isEditable: !fileLockStore.isLocked(store.activeTab.fileURL),
             onPasteImage: savePastedImage,
             onLinkClick: openWikiLink
         )

@@ -110,6 +110,11 @@ final class LaunchdJobStore: ObservableObject {
             setMessage("No job selected", isError: true)
             return
         }
+        if let message = FilePermissionLock.modificationBlockedMessage(for: job.plistURL, action: "Save") {
+            setMessage(message, isError: true)
+            appendLog(message)
+            return
+        }
 
         do {
             try editingContent.write(to: job.plistURL, atomically: true, encoding: .utf8)
@@ -261,6 +266,11 @@ final class LaunchdJobStore: ObservableObject {
     }
 
     func moveJobToTrash(_ job: LaunchdJob) {
+        if let message = FilePermissionLock.modificationBlockedMessage(for: job.plistURL, action: "Move to Trash") {
+            setMessage(message, isError: true)
+            appendLog(message)
+            return
+        }
         if job.isLoaded {
             let uid = getuid()
             let target = "gui/\(uid)/\(job.label)"

@@ -19,6 +19,7 @@ struct ScriptsTopToolsView: View {
     @ObservedObject var scriptsState: ScriptsModuleState
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
     @ObservedObject var appleScriptStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var commandStore: ShellCommandStore
     @ObservedObject var terminalRunner: CommandRunner
     @State private var isShowingSearchResults = false
@@ -34,7 +35,15 @@ struct ScriptsTopToolsView: View {
                 systemImage: scriptsState.activeKind.systemImage
             )
 
+            FilePermissionLockButton(
+                lockStore: fileLockStore,
+                fileURL: activeFileURL
+            )
+
             if let error = activeError {
+                StoreErrorBadge(message: error)
+            }
+            if let error = fileLockStore.lastError {
                 StoreErrorBadge(message: error)
             }
 
@@ -113,6 +122,15 @@ struct ScriptsTopToolsView: View {
             return shellWorkspaceStore.activeWorkspace.scriptURL.path
         case .appleScript:
             return appleScriptStore.activeFile.filePath
+        }
+    }
+
+    private var activeFileURL: URL {
+        switch scriptsState.activeKind {
+        case .shell:
+            return shellWorkspaceStore.activeWorkspace.scriptURL
+        case .appleScript:
+            return appleScriptStore.activeFile.fileURL
         }
     }
 
@@ -293,6 +311,7 @@ struct ScriptsWorkspaceView: View {
     @ObservedObject var scriptsState: ScriptsModuleState
     @ObservedObject var commandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var appleScriptStore: CodeFileStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var settingsStore: AppSettingsStore
@@ -316,6 +335,7 @@ struct ScriptsWorkspaceView: View {
             .foregroundStyle(.white.opacity(0.9))
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.045, green: 0.047, blue: 0.055))
+            .disabled(fileLockStore.isLocked(activeFileURL))
             .frame(width: size.width, height: editorHeight)
 
             Rectangle()
@@ -347,6 +367,7 @@ struct ScriptsWorkspaceView: View {
                 commandStore: commandStore,
                 shellWorkspaceStore: shellWorkspaceStore,
                 appleScriptStore: appleScriptStore,
+                fileLockStore: fileLockStore,
                 directoryStore: directoryStore,
                 settingsStore: settingsStore,
                 shellAIStore: shellAIStore,
@@ -526,6 +547,7 @@ private struct ScriptsCommandToolbar: View {
     @ObservedObject var commandStore: ShellCommandStore
     @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
     @ObservedObject var appleScriptStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var settingsStore: AppSettingsStore
     @ObservedObject var shellAIStore: ScriptAIEditStore
@@ -586,7 +608,8 @@ private struct ScriptsCommandToolbar: View {
                     language: scriptsState.activeKind.scriptLanguage,
                     fileName: activeFileName,
                     script: activeScriptText,
-                    onApply: { nextText in updateActiveScriptText(nextText) }
+                    onApply: { nextText in updateActiveScriptText(nextText) },
+                    isReadOnly: fileLockStore.isLocked(activeFileURL)
                 )
             }
         }

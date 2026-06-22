@@ -74,6 +74,10 @@ final class CodeFileStore: ObservableObject {
     }
 
     func updateText(_ nextText: String) {
+        if let message = FilePermissionLock.modificationBlockedMessage(for: activeFile.fileURL, action: "Save") {
+            lastError = message
+            return
+        }
         files[activeIndex].text = nextText
         persistActiveFile()
     }
@@ -95,6 +99,10 @@ final class CodeFileStore: ObservableObject {
 
     func moveActiveFileToTrash() {
         let url = activeFile.fileURL
+        if let message = FilePermissionLock.modificationBlockedMessage(for: url, action: "Move to Trash") {
+            lastError = message
+            return
+        }
         NSWorkspace.shared.recycle([url]) { [weak self] _, error in
             Task { @MainActor in
                 if let error {
@@ -152,6 +160,10 @@ final class CodeFileStore: ObservableObject {
 
         guard files.indices.contains(activeIndex) else { return }
         var file = files[activeIndex]
+        if let message = FilePermissionLock.modificationBlockedMessage(for: file.fileURL, action: "Save") {
+            lastError = message
+            return
+        }
 
         // Auto-rename based on first comment title (skip shebang)
         if let title = Self.firstCommentTitle(in: file.text, commentPrefix: commentPrefix) {

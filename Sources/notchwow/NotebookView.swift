@@ -14,6 +14,7 @@ struct NotebookView: View {
     let imageStore: LocalImageStore
     @ObservedObject var markdownAIStore: MarkdownAIEditStore
     @ObservedObject var markdownAIChatStore: MarkdownAIChatStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var drawerState: DrawerState
     @ObservedObject var editorInteractionState: EditorInteractionState
     @ObservedObject var workbenchState: WorkbenchState
@@ -80,6 +81,7 @@ struct NotebookView: View {
                         workbenchState: workbenchState,
                         scriptsState: scriptsState,
                         noteStore: store,
+                        fileLockStore: fileLockStore,
                         editorInteractionState: editorInteractionState,
                         pythonStore: pythonStore,
                         appleScriptStore: appleScriptStore,
@@ -108,6 +110,7 @@ struct NotebookView: View {
                     imageStore: imageStore,
                     markdownAIStore: markdownAIStore,
                     markdownAIChatStore: markdownAIChatStore,
+                    fileLockStore: fileLockStore,
                     editorInteractionState: editorInteractionState,
                     pythonStore: pythonStore,
                     appleScriptStore: appleScriptStore,
@@ -246,6 +249,7 @@ struct WorkbenchTopToolsView: View {
     @ObservedObject var workbenchState: WorkbenchState
     @ObservedObject var scriptsState: ScriptsModuleState
     @ObservedObject var noteStore: NoteStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     let editorInteractionState: EditorInteractionState
     @ObservedObject var pythonStore: CodeFileStore
     @ObservedObject var appleScriptStore: CodeFileStore
@@ -262,6 +266,7 @@ struct WorkbenchTopToolsView: View {
             case .markdown:
                 MarkdownTopToolsView(
                     store: noteStore,
+                    fileLockStore: fileLockStore,
                     editorInteractionState: editorInteractionState
                 )
             case .scripts:
@@ -269,17 +274,20 @@ struct WorkbenchTopToolsView: View {
                     scriptsState: scriptsState,
                     shellWorkspaceStore: shellWorkspaceStore,
                     appleScriptStore: appleScriptStore,
+                    fileLockStore: fileLockStore,
                     commandStore: shellCommandStore,
                     terminalRunner: terminalRunner
                 )
             case .python:
                 PythonTopToolsView(
                     codeStore: pythonStore,
+                    fileLockStore: fileLockStore,
                     runner: pythonRunner
                 )
             case .tasks:
                 LaunchdTopToolsView(
-                    jobStore: launchdJobStore
+                    jobStore: launchdJobStore,
+                    fileLockStore: fileLockStore
                 )
             }
         }
@@ -294,6 +302,7 @@ struct WorkbenchContentView: View {
     let imageStore: LocalImageStore
     @ObservedObject var markdownAIStore: MarkdownAIEditStore
     @ObservedObject var markdownAIChatStore: MarkdownAIChatStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     let editorInteractionState: EditorInteractionState
     @ObservedObject var pythonStore: CodeFileStore
     @ObservedObject var appleScriptStore: CodeFileStore
@@ -321,6 +330,7 @@ struct WorkbenchContentView: View {
                     imageStore: imageStore,
                     markdownAIStore: markdownAIStore,
                     markdownAIChatStore: markdownAIChatStore,
+                    fileLockStore: fileLockStore,
                     editorInteractionState: editorInteractionState,
                     directoryStore: directoryStore,
                     size: size
@@ -330,6 +340,7 @@ struct WorkbenchContentView: View {
                     scriptsState: scriptsState,
                     commandStore: shellCommandStore,
                     shellWorkspaceStore: shellWorkspaceStore,
+                    fileLockStore: fileLockStore,
                     appleScriptStore: appleScriptStore,
                     directoryStore: directoryStore,
                     settingsStore: settingsStore,
@@ -341,6 +352,7 @@ struct WorkbenchContentView: View {
             case .python:
                 PythonWorkspaceView(
                     codeStore: pythonStore,
+                    fileLockStore: fileLockStore,
                     condaStore: condaStore,
                     directoryStore: directoryStore,
                     settingsStore: settingsStore,
@@ -351,6 +363,7 @@ struct WorkbenchContentView: View {
             case .tasks:
                 LaunchdPane(
                     jobStore: launchdJobStore,
+                    fileLockStore: fileLockStore,
                     aiAgent: launchdAIAgent,
                     settingsStore: settingsStore,
                     directoryStore: directoryStore,

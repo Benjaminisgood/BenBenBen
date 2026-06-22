@@ -136,12 +136,14 @@ struct ScriptAIEditorControls: View {
     let fileName: String
     let script: String
     let onApply: (String) -> Void
+    let isReadOnly: Bool
 
     var body: some View {
         TextField("Describe script edit", text: $aiStore.input)
             .textFieldStyle(.plain)
             .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(.white.opacity(0.84))
+            .disabled(aiStore.isRunning || isReadOnly)
             .onSubmit(submit)
 
         Button(action: submit) {
@@ -149,7 +151,7 @@ struct ScriptAIEditorControls: View {
                 .frame(width: 26, height: 24)
         }
         .buttonStyle(MarkdownToolbarButtonStyle())
-        .disabled(!aiStore.canSubmit)
+        .disabled(!aiStore.canSubmit || isReadOnly)
         .help("Generate \(language.rawValue) proposal")
 
         if let proposal = aiStore.proposal {
@@ -170,11 +172,13 @@ struct ScriptAIEditorControls: View {
                     .frame(width: 26, height: 24)
             }
             .buttonStyle(MarkdownToolbarButtonStyle())
+            .disabled(isReadOnly)
             .help("Apply proposal")
         }
     }
 
     private func submit() {
+        guard !isReadOnly else { return }
         aiStore.submit(
             settings: settingsStore,
             language: language,
@@ -244,6 +248,36 @@ struct ActiveFileBadge: View {
                 .fill(.white.opacity(0.035))
         )
         .help(detail)
+    }
+}
+
+struct FilePermissionLockButton: View {
+    @ObservedObject var lockStore: FilePermissionLockStore
+    let fileURL: URL?
+
+    private var isLocked: Bool {
+        lockStore.isLocked(fileURL)
+    }
+
+    var body: some View {
+        Button {
+            lockStore.toggle(fileURL)
+        } label: {
+            Image(systemName: isLocked ? "lock.fill" : "lock.open")
+                .frame(width: 24, height: 22)
+        }
+        .buttonStyle(MarkdownToolbarButtonStyle())
+        .disabled(fileURL == nil)
+        .help(helpText)
+    }
+
+    private var helpText: String {
+        if let error = lockStore.lastError {
+            return error
+        }
+        return isLocked
+            ? "Unlock file for writing"
+            : "Lock file as read-only"
     }
 }
 

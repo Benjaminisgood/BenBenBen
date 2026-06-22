@@ -301,7 +301,8 @@ struct ShellInputToolbar: View {
                     language: .shell,
                     fileName: workspaceStore.activeWorkspace.scriptURL.lastPathComponent,
                     script: workspaceStore.scriptText,
-                    onApply: workspaceStore.updateScriptText
+                    onApply: workspaceStore.updateScriptText,
+                    isReadOnly: false
                 )
             }
         }

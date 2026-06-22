@@ -11,6 +11,7 @@ enum AppleScriptCommand {
 
 struct AppleScriptTopToolsView: View {
     @ObservedObject var codeStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var runner: CommandRunner
     @State private var isShowingSearchResults = false
     @State private var isConfirmingTrash = false
@@ -23,7 +24,15 @@ struct AppleScriptTopToolsView: View {
                 systemImage: "command.square"
             )
 
+            FilePermissionLockButton(
+                lockStore: fileLockStore,
+                fileURL: codeStore.activeFile.fileURL
+            )
+
             if let error = codeStore.lastError {
+                StoreErrorBadge(message: error)
+            }
+            if let error = fileLockStore.lastError {
                 StoreErrorBadge(message: error)
             }
 
@@ -82,6 +91,7 @@ struct AppleScriptTopToolsView: View {
 
 struct AppleScriptWorkspaceView: View {
     @ObservedObject var codeStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var settingsStore: AppSettingsStore
     @ObservedObject var aiStore: ScriptAIEditStore
@@ -103,6 +113,7 @@ struct AppleScriptWorkspaceView: View {
             .foregroundStyle(.white.opacity(0.9))
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.045, green: 0.047, blue: 0.055))
+            .disabled(fileLockStore.isLocked(codeStore.activeFile.fileURL))
             .frame(width: size.width, height: editorHeight)
 
             Rectangle()
@@ -124,6 +135,7 @@ struct AppleScriptWorkspaceView: View {
 
             AppleScriptCommandToolbar(
                 codeStore: codeStore,
+                fileLockStore: fileLockStore,
                 settingsStore: settingsStore,
                 aiStore: aiStore,
                 toolbarMode: $toolbarMode,
@@ -162,6 +174,7 @@ struct AppleScriptWorkspaceView: View {
 
 struct AppleScriptCommandToolbar: View {
     @ObservedObject var codeStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var settingsStore: AppSettingsStore
     @ObservedObject var aiStore: ScriptAIEditStore
     @Binding var toolbarMode: ScriptToolbarMode
@@ -232,7 +245,8 @@ struct AppleScriptCommandToolbar: View {
                     language: .appleScript,
                     fileName: codeStore.activeFile.fileName,
                     script: codeStore.text,
-                    onApply: codeStore.updateText
+                    onApply: codeStore.updateText,
+                    isReadOnly: fileLockStore.isLocked(codeStore.activeFile.fileURL)
                 )
             }
         }

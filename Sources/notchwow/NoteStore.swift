@@ -103,6 +103,10 @@ final class NoteStore: ObservableObject {
     }
 
     func updateText(_ nextText: String) {
+        if let message = FilePermissionLock.modificationBlockedMessage(for: activeTab.fileURL, action: "Save") {
+            lastError = message
+            return
+        }
         tabs[activeIndex].text = nextText
         clampSelection(for: tabs[activeIndex].id)
         persistActiveTabToDisk(allowRename: shouldAutoRenameDraft(tabs[activeIndex]))
@@ -124,6 +128,10 @@ final class NoteStore: ObservableObject {
 
     func moveActiveTabToTrash() {
         guard let url = activeTab.fileURL else { return }
+        if let message = FilePermissionLock.modificationBlockedMessage(for: url, action: "Move to Trash") {
+            lastError = message
+            return
+        }
         NSWorkspace.shared.recycle([url]) { [weak self] _, error in
             Task { @MainActor in
                 if let error {
@@ -137,7 +145,9 @@ final class NoteStore: ObservableObject {
     }
 
     func openActiveTabInDefaultEditor() {
-        persistActiveTabToDisk(allowRename: false)
+        if !FilePermissionLock.isLocked(activeTab.fileURL) {
+            persistActiveTabToDisk(allowRename: false)
+        }
         guard let url = activeTab.fileURL else {
             lastError = "Could not open Markdown file: missing file path."
             return
@@ -269,6 +279,10 @@ final class NoteStore: ObservableObject {
 
         var tab = tabs[activeIndex]
         let currentURL = tab.fileURL
+        if let message = FilePermissionLock.modificationBlockedMessage(for: currentURL, action: "Save") {
+            lastError = message
+            return
+        }
         let directoryURL = currentURL?.deletingLastPathComponent() ?? markdownRoot
         do {
             try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)

@@ -5,6 +5,7 @@ import SwiftUI
 
 struct PythonTopToolsView: View {
     @ObservedObject var codeStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var runner: PythonReplRunner
     @State private var isShowingSearchResults = false
     @State private var isConfirmingTrash = false
@@ -17,7 +18,15 @@ struct PythonTopToolsView: View {
                 systemImage: "curlybraces.square"
             )
 
+            FilePermissionLockButton(
+                lockStore: fileLockStore,
+                fileURL: codeStore.activeFile.fileURL
+            )
+
             if let error = codeStore.lastError {
+                StoreErrorBadge(message: error)
+            }
+            if let error = fileLockStore.lastError {
                 StoreErrorBadge(message: error)
             }
 
@@ -75,6 +84,7 @@ struct PythonTopToolsView: View {
 }
 struct PythonWorkspaceView: View {
     @ObservedObject var codeStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var condaStore: CondaEnvironmentStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var settingsStore: AppSettingsStore
@@ -97,6 +107,7 @@ struct PythonWorkspaceView: View {
             .foregroundStyle(.white.opacity(0.9))
             .scrollContentBackground(.hidden)
             .background(Color(red: 0.045, green: 0.047, blue: 0.055))
+            .disabled(fileLockStore.isLocked(codeStore.activeFile.fileURL))
             .frame(width: size.width, height: editorHeight)
 
             Rectangle()
@@ -118,6 +129,7 @@ struct PythonWorkspaceView: View {
 
             PythonCommandToolbar(
                 codeStore: codeStore,
+                fileLockStore: fileLockStore,
                 condaStore: condaStore,
                 directoryStore: directoryStore,
                 settingsStore: settingsStore,
@@ -165,6 +177,7 @@ struct PythonWorkspaceView: View {
 
 struct PythonCommandToolbar: View {
     @ObservedObject var codeStore: CodeFileStore
+    @ObservedObject var fileLockStore: FilePermissionLockStore
     @ObservedObject var condaStore: CondaEnvironmentStore
     @ObservedObject var directoryStore: WorkspaceDirectoryStore
     @ObservedObject var settingsStore: AppSettingsStore
@@ -244,7 +257,8 @@ struct PythonCommandToolbar: View {
                     language: .python,
                     fileName: codeStore.activeFile.fileName,
                     script: codeStore.text,
-                    onApply: codeStore.updateText
+                    onApply: codeStore.updateText,
+                    isReadOnly: fileLockStore.isLocked(codeStore.activeFile.fileURL)
                 )
             }
         }
