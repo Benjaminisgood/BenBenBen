@@ -11,15 +11,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppModel.shared.start()
 
         if companionOnly {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                NSApp.windows
-                    .filter { $0.title == "BenBenBen" }
-                    .forEach { $0.orderOut(nil) }
+            for delay in [0.10, 0.50, 1.25] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    Self.hideWorkbenchWindowsForCompanionLaunch()
+                }
             }
         }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    private static func hideWorkbenchWindowsForCompanionLaunch() {
+        NSApp.windows
+            .filter { !($0 is NotchPanel) }
+            .forEach { window in
+                window.isRestorable = false
+                window.orderOut(nil)
+            }
     }
 }
