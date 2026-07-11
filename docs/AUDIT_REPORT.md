@@ -1,10 +1,14 @@
-# 项目审查报告
+# 历史项目审查报告（原 notchwow 阶段）
+
+> 本文保留的是 BenBenBen 迁移前的一次 notchwow 审查快照。下文的 `Sources/notchwow`、`notchwow.app`、旧产品命令和结论只用于追溯历史，不是当前构建说明。当前身份与命令以 [架构说明](ARCHITECTURE.md) 和 [开发与验证](DEVELOPMENT.md) 为准。
+
+当前迁移已经把主源码、SwiftPM product/target、bundle 和 artifact 统一为 `Sources/BenBenBen`、`BenBenBen`、`BenBenBen.app` / `BenBenBen.zip`，Bundle ID 为 `io.github.benjaminisgood.benbenben`；本地 `dist/*.app` 不再跟踪。旧 `notchwow.*`、`notchNotes.*` 与 `com.notchwow.*` 仅作为明确的迁移兼容契约保留。
 
 ## 1. 审查范围
 
 本次检查覆盖：
 
-- `Sources/notchwow` 全部 Swift 源码。
+- 当时的 `Sources/notchwow` 全部 Swift 源码。
 - `Vendor/swift-markdown-engine` 的结构、编译结果和 warning。
 - SwiftPM manifest、调试运行脚本、Release 打包脚本。
 - README、静态主页和 `.understand-anything` 生成缓存。
@@ -32,7 +36,7 @@
 
 ### 构建与仓库卫生
 
-- `Scripts/package-app.sh` 更新到当前产品名 `notchwow`，只复制当前 SwiftPM 产物。
+- `Scripts/package-app.sh` 当时更新到旧产品名 `notchwow`，只复制当时的 SwiftPM 产物。
 - Release bundle 增加 Apple Events 用途说明。
 - 清理被提交的 `.understand-anything/intermediate` 和 `tmp` 缓存。
 - 为上述缓存增加 Git ignore 规则。
@@ -52,11 +56,11 @@ git diff --check
 plutil -lint dist/notchwow.app/Contents/Info.plist
 ```
 
-并已复制 Debug 二进制、重启 `dist/notchwow.app`、确认 `notchwow` 进程存活。
+并已复制当时的 Debug 二进制、重启 `dist/notchwow.app`、确认旧 `notchwow` 进程存活。
 
 ## 4. 仍需决定
 
-以下项目需要产品取舍，没有自动修改：
+以下项目是当时尚待决定的事项；均不代表当前状态：
 
 - `docs/index.html` 的品牌和下载链接仍需统一到当前仓库。
 - `dist/notchwow.app` 仍在 Git 历史中被跟踪，和 `.gitignore` 目标不一致。

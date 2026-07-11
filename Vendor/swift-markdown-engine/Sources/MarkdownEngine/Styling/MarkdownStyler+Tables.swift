@@ -12,9 +12,10 @@ extension MarkdownStyler {
 
     static func styleTables(_ ctx: StylingContext) -> [StyledRange] {
         var attrs: [StyledRange] = []
+        let blockCodeTokens = ctx.codeTokens.filter { $0.kind == .codeBlock }
 
         for (idx, token) in ctx.tokens.enumerated() where token.kind == .table {
-            if MarkdownDetection.isInsideCodeBlock(range: token.range, codeTokens: ctx.codeTokens) { continue }
+            if MarkdownDetection.isInsideCodeBlock(range: token.range, codeTokens: blockCodeTokens) { continue }
 
             let source = ctx.nsText.substring(with: token.contentRange)
             guard let table = MarkdownTableParser.parseTableBlock(source) else { continue }

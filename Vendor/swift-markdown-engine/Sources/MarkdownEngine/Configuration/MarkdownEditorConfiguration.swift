@@ -37,6 +37,7 @@ public struct MarkdownEditorConfiguration: Sendable {
     public var blockLatex: BlockLatexStyle
     public var inlineLatex: InlineLatexStyle
     public var table: TableStyle
+    public var callout: CalloutStyle
     public var checkbox: CheckboxStyle
     public var link: LinkStyle
     public var paragraph: ParagraphStyle
@@ -58,6 +59,7 @@ public struct MarkdownEditorConfiguration: Sendable {
         blockLatex: BlockLatexStyle = .default,
         inlineLatex: InlineLatexStyle = .default,
         table: TableStyle = .default,
+        callout: CalloutStyle = .default,
         checkbox: CheckboxStyle = .default,
         link: LinkStyle = .default,
         paragraph: ParagraphStyle = .default,
@@ -78,6 +80,7 @@ public struct MarkdownEditorConfiguration: Sendable {
         self.blockLatex = blockLatex
         self.inlineLatex = inlineLatex
         self.table = table
+        self.callout = callout
         self.checkbox = checkbox
         self.link = link
         self.paragraph = paragraph
@@ -376,6 +379,54 @@ public struct TableStyle: Sendable {
     }
 
     public static let `default` = TableStyle()
+}
+
+// MARK: - Callouts
+
+/// Layout tuning for Obsidian-style blockquote callouts.
+public struct CalloutStyle: Sendable {
+    public var fallbackMaxWidth: CGFloat
+    public var minimumWidth: CGFloat
+    public var horizontalPadding: CGFloat
+    public var verticalPadding: CGFloat
+    public var accentWidth: CGFloat
+    public var iconSize: CGFloat
+    public var titleGap: CGFloat
+    public var bodyTopSpacing: CGFloat
+    public var paragraphSpacingBefore: CGFloat
+    public var paragraphSpacing: CGFloat
+    public var cornerRadius: CGFloat
+    public var borderWidth: CGFloat
+
+    public init(
+        fallbackMaxWidth: CGFloat = 720,
+        minimumWidth: CGFloat = 180,
+        horizontalPadding: CGFloat = 13,
+        verticalPadding: CGFloat = 11,
+        accentWidth: CGFloat = 4,
+        iconSize: CGFloat = 18,
+        titleGap: CGFloat = 8,
+        bodyTopSpacing: CGFloat = 7,
+        paragraphSpacingBefore: CGFloat = 10,
+        paragraphSpacing: CGFloat = 14,
+        cornerRadius: CGFloat = 7,
+        borderWidth: CGFloat = 1
+    ) {
+        self.fallbackMaxWidth = fallbackMaxWidth
+        self.minimumWidth = minimumWidth
+        self.horizontalPadding = horizontalPadding
+        self.verticalPadding = verticalPadding
+        self.accentWidth = accentWidth
+        self.iconSize = iconSize
+        self.titleGap = titleGap
+        self.bodyTopSpacing = bodyTopSpacing
+        self.paragraphSpacingBefore = paragraphSpacingBefore
+        self.paragraphSpacing = paragraphSpacing
+        self.cornerRadius = cornerRadius
+        self.borderWidth = borderWidth
+    }
+
+    public static let `default` = CalloutStyle()
 }
 
 // MARK: - Task checkboxes

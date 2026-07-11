@@ -14,6 +14,7 @@
 //   - MarkdownStyler+Code.swift          (fenced + inline code)
 //   - MarkdownStyler+Latex.swift         (block + inline LaTeX)
 //   - MarkdownStyler+Tables.swift        (pipe tables)
+//   - MarkdownStyler+Callouts.swift      (blockquote callouts)
 //   - MarkdownStyler+Images.swift        (image embeds)
 //   - MarkdownStyler+TaskCheckboxes.swift
 import AppKit
@@ -173,6 +174,7 @@ enum MarkdownStyler {
         result += styleHorizontalRules(ctx)
         result += styleIncompleteLinkBrackets(ctx)
         result += styleTaskCheckboxes(ctx)
+        result += styleCallouts(ctx)
         result += shrinkInactiveMarkers(ctx)
         return result
     }
@@ -385,7 +387,7 @@ extension MarkdownStyler {
     static func shrinkInactiveMarkers(_ ctx: StylingContext) -> [StyledRange] {
         var attrs: [StyledRange] = []
         for (i, token) in ctx.tokens.enumerated() where !ctx.activeTokenIndices.contains(i) {
-            if token.kind == .codeBlock || token.kind == .inlineCode || token.kind == .inlineLatex || token.kind == .imageEmbed || token.kind == .table {
+            if token.kind == .codeBlock || token.kind == .inlineCode || token.kind == .inlineLatex || token.kind == .imageEmbed || token.kind == .table || token.kind == .callout {
                 continue
             }
             if MarkdownDetection.isInsideCodeBlock(range: token.range, codeTokens: ctx.codeTokens) {

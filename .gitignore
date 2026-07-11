@@ -1,13 +1,13 @@
 .build/
 .DS_Store
 DerivedData/
-notchwow.app/
+BenBenBen.app/
 .runtime/
 .swiftpm/
 *.xcuserdatad
 dist/
 build/
-dist/notchwow.app/*
-dist/notchwow.app?/**/*
+__pycache__/
+*.py[cod]
 .understand-anything/intermediate/
 .understand-anything/tmp/

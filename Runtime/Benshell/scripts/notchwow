@@ -1,0 +1,149 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+NOTCHWOW_HOME="${NOTCHWOW_HOME:-/Users/ben/Desktop/notchwow}"
+NOTCHWOW_APP_NAME="${NOTCHWOW_APP_NAME:-notchwow}"
+NOTCHWOW_GIT_REMOTE="${NOTCHWOW_GIT_REMOTE:-origin}"
+SCRIPT_PATH="${0:A}"
+SCRIPT_DIR="${SCRIPT_PATH:h}"
+
+if [[ ! -f "$SCRIPT_PATH" ]]; then
+  SCRIPT_PATH="$(command -v -- "${0:t}" 2>/dev/null || true)"
+  SCRIPT_DIR="${SCRIPT_PATH:h}"
+fi
+
+RUNTIME_CLI="${SCRIPT_DIR:h:h}/bin/benbenben"
+if [[ -x "$RUNTIME_CLI" ]]; then
+  print -u2 -- "notchwow is now BenBenBen; forwarding to benbenben."
+  exec "$RUNTIME_CLI" "$@"
+fi
+
+source "$SCRIPT_DIR/lib/project-git.zsh"
+
+say() {
+  print -- "$*"
+}
+
+die() {
+  print -u2 -- "notchwow: $*"
+  exit 1
+}
+
+preflight() {
+  [[ -d "$NOTCHWOW_HOME" ]] || die "$NOTCHWOW_HOME does not exist"
+  [[ -f "$NOTCHWOW_HOME/Package.swift" ]] || die "Package.swift not found"
+}
+
+require_run_script() {
+  preflight
+  [[ -x "$NOTCHWOW_HOME/Scripts/build_and_run.sh" ]] || die "Scripts/build_and_run.sh not found or not executable"
+}
+
+require_test_script() {
+  preflight
+  [[ -x "$NOTCHWOW_HOME/Scripts/test-logic.sh" ]] || die "Scripts/test-logic.sh not found or not executable"
+}
+
+stop_app() {
+  local pid
+
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    pkill -TERM -P "$pid" >/dev/null 2>&1 || true
+    kill -TERM "$pid" >/dev/null 2>&1 || true
+  done < <(pgrep -x "$NOTCHWOW_APP_NAME" || true)
+
+  say "stopped $NOTCHWOW_APP_NAME"
+}
+
+status_all() {
+  preflight
+
+  say "app:"
+  if pgrep -x "$NOTCHWOW_APP_NAME" >/dev/null 2>&1; then
+    say "  $NOTCHWOW_APP_NAME: running"
+  else
+    say "  $NOTCHWOW_APP_NAME: stopped"
+  fi
+
+  say ""
+  project_git_show_status "$NOTCHWOW_HOME" "notchwow" "$NOTCHWOW_GIT_REMOTE" "$@"
+}
+
+build_product() {
+  preflight
+  cd "$NOTCHWOW_HOME"
+  swift build --product "$NOTCHWOW_APP_NAME" "$@"
+}
+
+run_script() {
+  require_run_script
+  cd "$NOTCHWOW_HOME"
+  ./Scripts/build_and_run.sh "$@"
+}
+
+test_logic() {
+  require_test_script
+  cd "$NOTCHWOW_HOME"
+  ./Scripts/test-logic.sh "$@"
+}
+
+package_app() {
+  preflight
+  [[ -x "$NOTCHWOW_HOME/Scripts/package-app.sh" ]] || die "Scripts/package-app.sh not found or not executable"
+  cd "$NOTCHWOW_HOME"
+  ./Scripts/package-app.sh "$@"
+}
+
+usage() {
+  cat <<'EOF'
+Usage: notchwow <command>
+
+Commands:
+  status            Show app process state plus Git status/divergence
+  build             Build the SwiftPM notchwow product
+  run               Build, bundle, codesign, and launch the app
+  verify            Build, launch, and verify the notchwow process starts
+  stop              Stop the running notchwow process
+  test              Run the project logic smoke tests
+  test-logic        Same as test
+  logs              Launch and stream process logs
+  telemetry         Launch and stream app subsystem logs
+  debug             Build and open the executable in lldb
+  package           Build the release app package
+  sync [remote]     Pull from and push committed changes to GitHub
+  pull [remote]     Pull remote commits with rebase/autostash
+  push [remote]     Push committed local history
+  git-status        Show local Git branch, remote, divergence, and changes
+
+Environment:
+  NOTCHWOW_HOME       Default: /Users/ben/Desktop/notchwow
+  NOTCHWOW_APP_NAME   Default: notchwow
+  NOTCHWOW_GIT_REMOTE Git remote for sync/pull/push. Default: origin
+EOF
+}
+
+command_name="${1:-help}"
+if (( $# > 0 )); then
+  shift
+fi
+
+case "$command_name" in
+  status) status_all "$@" ;;
+  build) build_product "$@" ;;
+  run|start) run_script run "$@" ;;
+  verify) run_script verify "$@" ;;
+  stop) stop_app "$@" ;;
+  restart) stop_app; run_script run "$@" ;;
+  test|test-logic) test_logic "$@" ;;
+  logs) run_script --logs "$@" ;;
+  telemetry) run_script --telemetry "$@" ;;
+  debug) run_script --debug "$@" ;;
+  package) package_app "$@" ;;
+  sync) project_git_sync "$NOTCHWOW_HOME" "notchwow" "$NOTCHWOW_GIT_REMOTE" "$@" ;;
+  pull) project_git_pull "$NOTCHWOW_HOME" "notchwow" "$NOTCHWOW_GIT_REMOTE" "$@" ;;
+  push) project_git_push "$NOTCHWOW_HOME" "notchwow" "$NOTCHWOW_GIT_REMOTE" "$@" ;;
+  git-status|gitstatus) project_git_show_status "$NOTCHWOW_HOME" "notchwow" "$NOTCHWOW_GIT_REMOTE" "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 2 ;;
+esac

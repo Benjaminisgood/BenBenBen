@@ -1,6 +1,6 @@
-# notchwow Markdown Syntax for AI Agents
+# BenBenBen Markdown Syntax for AI Agents
 
-This document describes the Markdown dialect that notchwow expects AI agents to write inside the Markdown workspace.
+This document describes the Markdown dialect that BenBenBen expects AI agents to write inside the Markdown workspace. The filename is retained as a stable legacy documentation link from the former notchwow app.
 
 ## Storage Location
 
@@ -16,8 +16,8 @@ This document describes the Markdown dialect that notchwow expects AI agents to 
 # Project Plan
 ```
 
-- notchwow uses the first `# ` heading as the note title.
-- When a note is edited, notchwow may rename the file from the first heading. Use filesystem-safe titles and keep note titles unique.
+- BenBenBen uses the first `# ` heading as the note title.
+- When a note is edited, BenBenBen may rename the file from the first heading. Use filesystem-safe titles and keep note titles unique.
 
 ## Wiki Links Between Notes
 
@@ -27,7 +27,7 @@ Use Obsidian-style double-bracket links for note-to-note navigation:
 See [[Project Plan]] for the current roadmap.
 ```
 
-notchwow resolves a wiki link against existing notes by:
+BenBenBen resolves a wiki link against existing notes by:
 
 - first `# ` heading, for example `[[Project Plan]]`
 - file stem, for example `[[Project Plan]]` for `Project Plan.md`
@@ -45,7 +45,7 @@ Agents may write familiar Obsidian-style anchors:
 [[Project Plan^launch-block]]
 ```
 
-Current notchwow navigation resolves the note part and opens the target note. It does not scroll to the heading or block anchor yet.
+Current BenBenBen navigation resolves the note part and opens the target note. It does not scroll to the heading or block anchor yet.
 
 ### Unsupported Wiki-Link Forms
 
@@ -71,6 +71,9 @@ Agents may use normal Markdown:
 **bold**, *italic*, ~~strikethrough~~, `inline code`
 
 > Quote
+
+> [!important]
+> Important notes render as callouts.
 
 [External link](https://example.com)
 
@@ -112,7 +115,7 @@ Use wiki-style embeds for local attachments:
 ![[attachments/diagram.png]]
 ```
 
-When users paste images or files, notchwow copies them into the Markdown root's `attachments/` directory and inserts the appropriate reference.
+When users paste images or files, BenBenBen copies them into the Markdown root's `attachments/` directory and inserts the appropriate reference.
 
 ## Agent Writing Rules
 

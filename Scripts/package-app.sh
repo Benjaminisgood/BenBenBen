@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="notchwow"
+APP_NAME="BenBenBen"
 APP_DIR="${APP_DIR:-$ROOT_DIR/dist/$APP_NAME.app}"
 APPLICATIONS_APP_DIR="${APPLICATIONS_APP_DIR:-/Applications/$APP_NAME.app}"
 COPY_TO_APPLICATIONS="${COPY_TO_APPLICATIONS:-1}"
@@ -11,6 +11,7 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 SOURCE_ICON="$ROOT_DIR/Resources/AppIcon.png"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+RUNTIME_RESOURCES="$RESOURCES_DIR/Runtime"
 
 cd "$ROOT_DIR"
 swift build -c release --product "$APP_NAME"
@@ -19,6 +20,11 @@ BUILD_BINARY="$(swift build -c release --show-bin-path)/$APP_NAME"
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILD_BINARY" "$MACOS_DIR/$APP_NAME"
+"$ROOT_DIR/Scripts/copy-runtime.sh" "$RUNTIME_RESOURCES"
+if [[ -d "$ROOT_DIR/Resources/Mascot" ]]; then
+  /usr/bin/ditto "$ROOT_DIR/Resources/Mascot" "$RESOURCES_DIR/Mascot"
+fi
+CONFIGURATION=release SIGN_IDENTITY="$SIGN_IDENTITY" "$ROOT_DIR/Scripts/embed-login-helper.sh" "$APP_DIR"
 
 if [[ -f "$SOURCE_ICON" ]]; then
   TMP_DIR="$(mktemp -d)"
@@ -47,7 +53,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.benjaminisgood.notchwow</string>
+  <string>io.github.benjaminisgood.benbenben</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
   <key>CFBundleIconFile</key>
@@ -59,11 +65,13 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleVersion</key>
   <string>2</string>
   <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
-  <key>LSUIElement</key>
-  <true/>
+  <string>26.0</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>notchwow can open directories you choose in Terminal.</string>
+  <string>BenBenBen can open directories you choose in Terminal.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>BenBenBen uses the microphone only while you hold to talk with Ben龙.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>BenBenBen converts your push-to-talk audio into text for your agent.</string>
 </dict>
 </plist>
 PLIST

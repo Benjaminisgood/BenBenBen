@@ -3,32 +3,43 @@
 import PackageDescription
 
 let package = Package(
-    name: "notchwow",
+    name: "BenBenBen",
     platforms: [
-        .macOS(.v14)
+        .macOS("26.0")
     ],
     products: [
-        .executable(name: "notchwow", targets: ["notchwow"])
+        .executable(name: "BenBenBen", targets: ["BenBenBen"]),
+        .executable(name: "BenBenBenLoginHelper", targets: ["BenBenBenLoginHelper"])
     ],
     dependencies: [
         .package(path: "Vendor/swift-markdown-engine")
     ],
     targets: [
         .executableTarget(
-            name: "notchwow",
+            name: "BenBenBen",
             dependencies: [
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine")
             ],
-            path: "Sources/notchwow",
+            path: "Sources/BenBenBen",
             linkerSettings: [
-                .linkedFramework("Security")
+                .linkedFramework("Security"),
+                .linkedFramework("ServiceManagement"),
+                .linkedFramework("Speech"),
+                .linkedFramework("AVFoundation")
+            ]
+        ),
+        .executableTarget(
+            name: "BenBenBenLoginHelper",
+            path: "Sources/BenBenBenLoginHelper",
+            linkerSettings: [
+                .linkedFramework("AppKit")
             ]
         ),
         .testTarget(
-            name: "notchwowTests",
-            dependencies: ["notchwow"],
-            path: "Tests/notchwowTests"
+            name: "BenBenBenTests",
+            dependencies: ["BenBenBen"],
+            path: "Tests/BenBenBenTests"
         )
     ]
 )

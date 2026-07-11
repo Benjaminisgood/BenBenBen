@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "runtimeVersion": "1.0.0",
+  "mcpHelper": "bin/benbenben-mcp",
+  "actions": [
+    {
+      "id": "runtime.version",
+      "title": "Runtime version",
+      "summary": "Report the installed BenBenBen Runtime version without changing state.",
+      "executable": "bin/benbenben",
+      "arguments": ["version"],
+      "cwd": "${BENBENBEN_RUNTIME_HOME}",
+      "risk": "read",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "benbenben.status",
+      "title": "BenBenBen status",
+      "summary": "Inspect the app process and repository without modifying either.",
+      "executable": "Benshell/scripts/benbenben-app",
+      "arguments": ["status"],
+      "cwd": "${BENBENBEN_PROJECT_HOME}",
+      "risk": "read",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "benbenben.test",
+      "title": "BenBenBen logic tests",
+      "summary": "Run the repository logic smoke tests.",
+      "executable": "Benshell/scripts/benbenben-app",
+      "arguments": ["test"],
+      "cwd": "${BENBENBEN_PROJECT_HOME}",
+      "risk": "execute",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "benbenben.build",
+      "title": "Build BenBenBen",
+      "summary": "Build the Swift package and write only normal build artifacts.",
+      "executable": "Benshell/scripts/benbenben-app",
+      "arguments": ["build"],
+      "cwd": "${BENBENBEN_PROJECT_HOME}",
+      "risk": "write",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "benbenben.verify",
+      "title": "Build and launch BenBenBen",
+      "summary": "Build, package, sign, launch, and verify the local app.",
+      "executable": "Benshell/scripts/benbenben-app",
+      "arguments": ["verify"],
+      "cwd": "${BENBENBEN_PROJECT_HOME}",
+      "risk": "execute",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "nanobot.status",
+      "title": "nanobot status",
+      "summary": "Inspect the local nanobot service, ports, and Git state.",
+      "executable": "Benshell/scripts/nanobot",
+      "arguments": ["status"],
+      "cwd": "${HOME}",
+      "risk": "read",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "deeptutor.status",
+      "title": "DeepTutor status",
+      "summary": "Inspect the local DeepTutor service and Git state.",
+      "executable": "Benshell/scripts/deeptutor",
+      "arguments": ["status"],
+      "cwd": "${HOME}",
+      "risk": "read",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "papis.status",
+      "title": "Papis status",
+      "summary": "Inspect the local Papis service and Git state.",
+      "executable": "Benshell/scripts/papis",
+      "arguments": ["status"],
+      "cwd": "${HOME}",
+      "risk": "read",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    },
+    {
+      "id": "taptap.status",
+      "title": "taptap status",
+      "summary": "Inspect the local taptap environment and Git state.",
+      "executable": "Benshell/scripts/taptap",
+      "arguments": ["status"],
+      "cwd": "${HOME}",
+      "risk": "read",
+      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+    }
+  ]
+}
