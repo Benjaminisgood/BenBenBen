@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "source": "Resources/DesignSources/ben-dragon-sprite-sheet-transparent.png",
+  "cellSize": 418,
+  "states": {
+    "logo": {
+      "file": "ben-dragon-logo.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        101,
+        75,
+        381,
+        399
+      ],
+      "opaqueBoundsSize": [
+        280,
+        324
+      ],
+      "magentaPixels": 0
+    },
+    "idle": {
+      "file": "ben-dragon-idle.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        91,
+        79,
+        360,
+        399
+      ],
+      "opaqueBoundsSize": [
+        269,
+        320
+      ],
+      "magentaPixels": 0
+    },
+    "listening": {
+      "file": "ben-dragon-listening.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        70,
+        87,
+        353,
+        399
+      ],
+      "opaqueBoundsSize": [
+        283,
+        312
+      ],
+      "magentaPixels": 0
+    },
+    "thinking": {
+      "file": "ben-dragon-thinking.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        75,
+        55,
+        364,
+        376
+      ],
+      "opaqueBoundsSize": [
+        289,
+        321
+      ],
+      "magentaPixels": 0
+    },
+    "working": {
+      "file": "ben-dragon-working.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        15,
+        79,
+        362,
+        376
+      ],
+      "opaqueBoundsSize": [
+        347,
+        297
+      ],
+      "magentaPixels": 0
+    },
+    "waitingApproval": {
+      "file": "ben-dragon-waitingApproval.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        80,
+        89,
+        336,
+        383
+      ],
+      "opaqueBoundsSize": [
+        256,
+        294
+      ],
+      "magentaPixels": 0
+    },
+    "success": {
+      "file": "ben-dragon-success.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        76,
+        16,
+        380,
+        335
+      ],
+      "opaqueBoundsSize": [
+        304,
+        319
+      ],
+      "magentaPixels": 0
+    },
+    "error": {
+      "file": "ben-dragon-error.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        14,
+        41,
+        351,
+        336
+      ],
+      "opaqueBoundsSize": [
+        337,
+        295
+      ],
+      "magentaPixels": 0
+    },
+    "sleep": {
+      "file": "ben-dragon-sleep.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        26,
+        70,
+        346,
+        335
+      ],
+      "opaqueBoundsSize": [
+        320,
+        265
+      ],
+      "magentaPixels": 0
+    }
+  },
+  "appIcon": "Resources/AppIcon.png"
+}
