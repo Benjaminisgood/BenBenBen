@@ -2,9 +2,9 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="notchwow"
-BUNDLE_ID="io.github.benjaminisgood.notchwow.dev"
-MIN_SYSTEM_VERSION="14.0"
+APP_NAME="BenBenBen"
+BUNDLE_ID="io.github.benjaminisgood.benbenben"
+MIN_SYSTEM_VERSION="26.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -15,6 +15,9 @@ APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SOURCE_ICON="$ROOT_DIR/Resources/AppIcon.png"
+RUNTIME_RESOURCES="$APP_RESOURCES/Runtime"
+INSTALL_RUNTIME="${INSTALL_RUNTIME:-1}"
+UPDATE_ZSHRC="${UPDATE_ZSHRC:-1}"
 
 cd "$ROOT_DIR"
 
@@ -40,6 +43,11 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+"$ROOT_DIR/Scripts/copy-runtime.sh" "$RUNTIME_RESOURCES"
+if [[ -d "$ROOT_DIR/Resources/Mascot" ]]; then
+  /usr/bin/ditto "$ROOT_DIR/Resources/Mascot" "$APP_RESOURCES/Mascot"
+fi
+CONFIGURATION=debug SIGN_IDENTITY=- "$ROOT_DIR/Scripts/embed-login-helper.sh" "$APP_BUNDLE"
 
 if [[ -f "$SOURCE_ICON" ]]; then
   TMP_DIR="$(mktemp -d)"
@@ -80,13 +88,25 @@ cat >"$INFO_PLIST" <<PLIST
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>notchwow can open directories you choose in Terminal.</string>
+  <string>BenBenBen can open directories you choose in Terminal.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>BenBenBen uses the microphone only while you hold to talk with Ben龙.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>BenBenBen converts your push-to-talk audio into text for your agent.</string>
 </dict>
 </plist>
 PLIST
 
 codesign --force --deep --sign - "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
+if [[ "$INSTALL_RUNTIME" == "1" ]]; then
+  runtime_install_args=(install --source "$RUNTIME_RESOURCES")
+  if [[ "$UPDATE_ZSHRC" != "1" ]]; then
+    runtime_install_args+=(--no-zshrc)
+  fi
+  "$RUNTIME_RESOURCES/install.zsh" "${runtime_install_args[@]}"
+fi
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
@@ -114,6 +134,7 @@ case "$MODE" in
     ;;
   *)
     echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "environment: INSTALL_RUNTIME=0 skips Runtime installation; UPDATE_ZSHRC=0 keeps ~/.zshrc unchanged" >&2
     exit 2
     ;;
 esac

@@ -1,0 +1,369 @@
+#!/usr/bin/python3
+"""Canonical command-line entry point for the BenBenBen personal runtime."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+from typing import Any, Dict, Mapping, Optional, Sequence
+
+EXIT_USAGE = 2
+EXIT_APPROVAL_REQUIRED = 3
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
+APP_COMMANDS = {
+    "status", "git-status", "gitstatus", "build", "run", "start", "verify",
+    "stop", "restart", "test", "test-logic", "logs", "telemetry", "debug",
+    "package", "sync", "pull", "push",
+}
+REQUIRED_ACTION_FIELDS = {
+    "id", "title", "summary", "executable", "arguments", "cwd", "risk", "inputSchema"
+}
+
+
+class CliError(Exception):
+    """A user-facing CLI error with a stable exit status."""
+
+    def __init__(self, message: str, exit_code: int = 1) -> None:
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+def runtime_root() -> Path:
+    configured = os.environ.get("BENBENBEN_RUNTIME_HOME")
+    if configured:
+        candidate = Path(configured).expanduser().resolve()
+        if (candidate / "manifest.json").is_file():
+            return candidate
+    return Path(__file__).resolve().parent.parent
+
+
+def runtime_version(root: Path) -> str:
+    version_path = root / "VERSION"
+    try:
+        return version_path.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise CliError("Runtime VERSION is unavailable: {}".format(error)) from error
+
+
+def load_manifest(root: Path) -> Dict[str, Any]:
+    path = root / "manifest.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise CliError("Runtime manifest is invalid: {}".format(error)) from error
+
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != 1:
+        raise CliError("Runtime manifest schemaVersion must be 1")
+    if payload.get("runtimeVersion") != runtime_version(root):
+        raise CliError("Runtime manifest version does not match VERSION")
+    actions = payload.get("actions")
+    if not isinstance(actions, list):
+        raise CliError("Runtime manifest actions must be an array")
+
+    seen = set()
+    for raw_action in actions:
+        if not isinstance(raw_action, dict):
+            raise CliError("Each Runtime action must be an object")
+        missing = REQUIRED_ACTION_FIELDS.difference(raw_action)
+        if missing:
+            raise CliError("Action is missing fields: {}".format(", ".join(sorted(missing))))
+        action_id = raw_action.get("id")
+        if not isinstance(action_id, str) or not action_id:
+            raise CliError("Every Runtime action requires a non-empty string id")
+        if action_id in seen:
+            raise CliError("Duplicate Runtime action id: {}".format(action_id))
+        if not isinstance(raw_action.get("arguments"), list) or not all(
+            isinstance(value, str) for value in raw_action["arguments"]
+        ):
+            raise CliError("Action {} arguments must be a string array".format(action_id))
+        seen.add(action_id)
+    return payload
+
+
+def project_home() -> Path:
+    raw = os.environ.get("BENBENBEN_PROJECT_HOME")
+    if not raw:
+        legacy = os.environ.get("NOTCHWOW_HOME")
+        raw = legacy if legacy and legacy != "/Users/ben/Desktop/notchwow" else "/Users/ben/Desktop/BenBenBen"
+    return Path(raw).expanduser()
+
+
+def placeholders(root: Path) -> Mapping[str, str]:
+    return {
+        "BENBENBEN_RUNTIME_HOME": str(root),
+        "BENSHELL_HOME": str(root / "Benshell"),
+        "BENBENBEN_PROJECT_HOME": str(project_home()),
+        "HOME": str(Path.home()),
+    }
+
+
+def expand_placeholders(value: str, root: Path) -> str:
+    values = placeholders(root)
+
+    def replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in values:
+            raise CliError("Unsupported manifest placeholder: {}".format(key))
+        return values[key]
+
+    return PLACEHOLDER_PATTERN.sub(replace, value)
+
+
+def resolve_executable(action: Mapping[str, Any], root: Path) -> Path:
+    raw = action["executable"]
+    if not isinstance(raw, str) or not raw or Path(raw).is_absolute():
+        raise CliError("Action {} executable must be Runtime-relative".format(action["id"]))
+    resolved_root = root.resolve()
+    candidate = (resolved_root / raw).resolve()
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError as error:
+        raise CliError("Action {} executable escapes the Runtime".format(action["id"])) from error
+    return candidate
+
+
+def resolve_cwd(action: Mapping[str, Any], root: Path) -> Path:
+    raw = action["cwd"]
+    if not isinstance(raw, str) or not raw:
+        raise CliError("Action {} cwd must be a non-empty string".format(action["id"]))
+    expanded = Path(expand_placeholders(raw, root)).expanduser()
+    return expanded if expanded.is_absolute() else root / expanded
+
+
+def find_action(manifest: Mapping[str, Any], action_id: str) -> Mapping[str, Any]:
+    for action in manifest["actions"]:
+        if action["id"] == action_id:
+            return action
+    raise CliError("Unknown tool id: {}".format(action_id), EXIT_USAGE)
+
+
+def action_status(action: Mapping[str, Any], root: Path) -> Dict[str, Any]:
+    executable = resolve_executable(action, root)
+    cwd = resolve_cwd(action, root)
+    executable_ready = executable.is_file() and os.access(str(executable), os.X_OK)
+    cwd_ready = cwd.is_dir()
+    return {
+        "id": action["id"],
+        "title": action["title"],
+        "risk": action["risk"],
+        "available": executable_ready and cwd_ready,
+        "executable": str(executable),
+        "executableReady": executable_ready,
+        "cwd": str(cwd),
+        "cwdReady": cwd_ready,
+    }
+
+
+def emit_json(payload: Any) -> None:
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def usage(stream: Any = sys.stdout) -> None:
+    stream.write(
+        "Usage: benbenben <command>\n\n"
+        "Commands:\n"
+        "  version                         Show the Runtime version\n"
+        "  runtime status [--json]         Inspect the active Runtime\n"
+        "  tools list [--json]             List fixed manifest actions\n"
+        "  tools status [id] [--json]      Check action availability\n"
+        "  tools run <id> [options]        Run one fixed manifest action\n"
+        "  status|build|run|verify|...     Control the BenBenBen app project\n\n"
+        "tools run options:\n"
+        "  --json       Return a structured result\n"
+        "  --dry-run    Resolve and print the command without running it\n"
+        "  --yes        Confirm actions whose risk is not read-only\n\n"
+        "The manifest never accepts arbitrary executable names or extra argv.\n"
+    )
+
+
+def command_runtime(args: Sequence[str], root: Path) -> int:
+    if not args or args[0] != "status":
+        raise CliError("Usage: benbenben runtime status [--json]", EXIT_USAGE)
+    unknown = [value for value in args[1:] if value != "--json"]
+    if unknown:
+        raise CliError("Unknown runtime status option: {}".format(unknown[0]), EXIT_USAGE)
+    manifest = load_manifest(root)
+    payload = {
+        "runtimeVersion": runtime_version(root),
+        "root": str(root),
+        "manifest": str(root / "manifest.json"),
+        "benshell": str(root / "Benshell"),
+        "actionCount": len(manifest["actions"]),
+        "ready": (root / "Benshell" / "zsh" / "init.zsh").is_file(),
+    }
+    if "--json" in args:
+        emit_json(payload)
+    else:
+        print("BenBenBen Runtime {}".format(payload["runtimeVersion"]))
+        print("root: {}".format(payload["root"]))
+        print("actions: {}".format(payload["actionCount"]))
+        print("ready: {}".format("yes" if payload["ready"] else "no"))
+    return 0 if payload["ready"] else 1
+
+
+def command_tools(args: Sequence[str], root: Path) -> int:
+    if not args:
+        raise CliError("Usage: benbenben tools <list|status|run>", EXIT_USAGE)
+    manifest = load_manifest(root)
+    command = args[0]
+    values = list(args[1:])
+
+    if command == "list":
+        unknown = [value for value in values if value != "--json"]
+        if unknown:
+            raise CliError("Unknown tools list option: {}".format(unknown[0]), EXIT_USAGE)
+        if "--json" in values:
+            emit_json({
+                "schemaVersion": manifest["schemaVersion"],
+                "runtimeVersion": manifest["runtimeVersion"],
+                "tools": manifest["actions"],
+            })
+        else:
+            for action in manifest["actions"]:
+                print("{:<24} {:<8} {}".format(action["id"], action["risk"], action["title"]))
+        return 0
+
+    if command == "status":
+        json_output = "--json" in values
+        positional = [value for value in values if value != "--json"]
+        if len(positional) > 1:
+            raise CliError("Usage: benbenben tools status [id] [--json]", EXIT_USAGE)
+        selected = [find_action(manifest, positional[0])] if positional else manifest["actions"]
+        statuses = [action_status(action, root) for action in selected]
+        payload: Any = statuses[0] if positional else statuses
+        if json_output:
+            emit_json(payload)
+        else:
+            for status in statuses:
+                print("{:<24} {}".format(status["id"], "ready" if status["available"] else "unavailable"))
+        return 0 if all(value["available"] for value in statuses) else 1
+
+    if command == "run":
+        allowed_flags = {"--json", "--dry-run", "--yes"}
+        unknown_flags = [value for value in values if value.startswith("-") and value not in allowed_flags]
+        if unknown_flags:
+            raise CliError("Unknown tools run option: {}".format(unknown_flags[0]), EXIT_USAGE)
+        positional = [value for value in values if value not in allowed_flags]
+        if len(positional) != 1:
+            raise CliError("Usage: benbenben tools run <id> [--json] [--dry-run] [--yes]", EXIT_USAGE)
+        action = find_action(manifest, positional[0])
+        json_output = "--json" in values
+        confirmed = "--yes" in values
+        dry_run = "--dry-run" in values
+        executable = resolve_executable(action, root)
+        cwd = resolve_cwd(action, root)
+        command_line = [str(executable)] + list(action["arguments"])
+        status = action_status(action, root)
+        if not status["available"]:
+            payload = {
+                "actionId": action["id"], "status": "unavailable", "exitCode": 1,
+                "command": command_line, "cwd": str(cwd),
+            }
+            if json_output:
+                emit_json(payload)
+            else:
+                print("Tool is unavailable: {}".format(action["id"]), file=sys.stderr)
+            return 1
+        if action["risk"] != "read" and not confirmed:
+            payload = {
+                "actionId": action["id"], "status": "approvalRequired",
+                "risk": action["risk"], "exitCode": EXIT_APPROVAL_REQUIRED,
+                "command": command_line, "cwd": str(cwd),
+            }
+            if json_output:
+                emit_json(payload)
+            else:
+                print("Approval required for {}. Re-run with --yes.".format(action["id"]), file=sys.stderr)
+            return EXIT_APPROVAL_REQUIRED
+        if dry_run:
+            payload = {
+                "actionId": action["id"], "status": "dryRun", "exitCode": 0,
+                "command": command_line, "cwd": str(cwd),
+            }
+            if json_output:
+                emit_json(payload)
+            else:
+                print("cwd: {}".format(cwd))
+                print("command: {}".format(" ".join(command_line)))
+            return 0
+
+        environment = os.environ.copy()
+        environment.update({
+            "BENBENBEN_RUNTIME_HOME": str(root),
+            "BENSHELL_HOME": str(root / "Benshell"),
+            "BENBENBEN_PROJECT_HOME": str(project_home()),
+            "NOTCHWOW_HOME": str(project_home()),
+            "NOTCHWOW_APP_NAME": environment.get("NOTCHWOW_APP_NAME", "BenBenBen"),
+        })
+        completed = subprocess.run(
+            command_line,
+            cwd=str(cwd),
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE if json_output else None,
+            stderr=subprocess.PIPE if json_output else None,
+            check=False,
+        )
+        if json_output:
+            emit_json({
+                "actionId": action["id"],
+                "status": "success" if completed.returncode == 0 else "failed",
+                "exitCode": completed.returncode,
+                "command": command_line,
+                "cwd": str(cwd),
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            })
+        return completed.returncode
+
+    raise CliError("Unknown tools command: {}".format(command), EXIT_USAGE)
+
+
+def forward_app_command(args: Sequence[str], root: Path) -> int:
+    controller = root / "Benshell" / "scripts" / "benbenben-app"
+    if not controller.is_file():
+        raise CliError("BenBenBen app controller is missing: {}".format(controller))
+    environment = os.environ.copy()
+    environment.update({
+        "BENBENBEN_RUNTIME_HOME": str(root),
+        "BENSHELL_HOME": str(root / "Benshell"),
+        "BENBENBEN_PROJECT_HOME": str(project_home()),
+        "NOTCHWOW_HOME": str(project_home()),
+        "NOTCHWOW_APP_NAME": environment.get("NOTCHWOW_APP_NAME", "BenBenBen"),
+    })
+    return subprocess.call([str(controller)] + list(args), env=environment)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    root = runtime_root()
+    if not args or args[0] in {"help", "-h", "--help"}:
+        usage()
+        return 0
+    command = args[0]
+    if command == "version":
+        if len(args) != 1:
+            raise CliError("Usage: benbenben version", EXIT_USAGE)
+        print(runtime_version(root))
+        return 0
+    if command == "runtime":
+        return command_runtime(args[1:], root)
+    if command == "tools":
+        return command_tools(args[1:], root)
+    if command in APP_COMMANDS:
+        return forward_app_command(args, root)
+    raise CliError("Unknown command: {}".format(command), EXIT_USAGE)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except CliError as error:
+        print("benbenben: {}".format(error), file=sys.stderr)
+        sys.exit(error.exit_code)
+    except KeyboardInterrupt:
+        sys.exit(130)
