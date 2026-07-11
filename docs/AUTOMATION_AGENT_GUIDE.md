@@ -1,6 +1,6 @@
-# 自动化 Agent 指南
+# BenBenBen 自动化 Agent 指南
 
-这份文档用于指导生成 Shell、Python、AppleScript 和 `launchd` plist 的 agent。`notchwow` 把脚本编辑、直接运行和 Jobs 编排放在同一个工作台中，但脚本源文件与运行产物必须分开管理。
+这份文档用于指导生成 Shell、Python、AppleScript 和 `launchd` plist 的 Agent。BenBenBen 把脚本编辑、受控运行和 Jobs 编排放在同一个工作台中，但脚本源文件与运行产物必须分开管理。
 
 ## 1. 安装工作区说明
 
@@ -16,6 +16,8 @@
 FORCE=1 ./Scripts/install-keyoti-agent-guide.sh
 ```
 
+主应用仓库路径是 `/Users/ben/Desktop/BenBenBen`。不要把旧 `/Users/ben/Desktop/notchwow` 写入新的自动化配置；旧路径只可作为迁移历史识别。
+
 ## 2. 目录约定
 
 | 类型 | 源文件位置 | 运行方式 |
@@ -23,19 +25,20 @@ FORCE=1 ./Scripts/install-keyoti-agent-guide.sh
 | Shell | `~/keyoti/shs/workspace-scripts/*.sh` | `/bin/zsh /absolute/path/script.sh` |
 | Python | `~/keyoti/pys/*.py` | Settings 中配置的 Conda Python |
 | AppleScript | `~/keyoti/applescripts/*.applescript` | `/usr/bin/osascript /absolute/path/script.applescript` |
-| Jobs | `~/keyoti/launchds/com.notchwow.<task>.plist` | Jobs 工作区加载和卸载 |
+| 新 Jobs | `~/keyoti/launchds/com.benbenben.<task>.plist` | Jobs 工作区加载和卸载 |
+| 旧 Jobs | `~/keyoti/launchds/com.notchwow.<task>.plist` | 迁移兼容；保持现状 |
 
-Shell 的 `workspaces/`、`workspace-inputs/`，以及 transcript 和日志文件属于运行产物。agent 不应把业务脚本写入这些目录。
+Shell 的 `workspaces/`、`workspace-inputs/`、transcript 和日志属于运行产物。Agent 不应把业务脚本写入这些目录。
 
-推荐采用三层结构：
+推荐三层结构：
 
-1. `shs/workspace-scripts/*.sh` 只负责解析少量参数、设置环境变量和调用下一层。
-2. `pys/*.py` 负责结构化数据、状态持久化、内容生成和较复杂的业务逻辑。
+1. `shs/workspace-scripts/*.sh` 只解析少量参数、设置环境变量和调用下一层。
+2. `pys/*.py` 负责结构化数据、状态持久化、内容生成和复杂业务逻辑。
 3. `applescripts/*.applescript` 只负责通知、窗口控制、快速笔记等 macOS UI 交互。
 
 避免在 Shell 中内嵌大段 Python，也不要把业务 Python 放进 Shell 目录下的隐藏缓存目录。
 
-## 3. 脚本之间互调
+## 3. 脚本互调
 
 Shell 脚本使用动态根目录，避免写死用户名：
 
@@ -47,36 +50,62 @@ CONDA_ROOT="${CONDA_ROOT:-$HOME/miniforge3}"
 /usr/bin/osascript "$KEYOTI_HOME/applescripts/notify.applescript"
 ```
 
-如果 Python 路径已在 Settings 中覆盖，plist 应使用配置后的绝对路径。生成前先查看 Settings 或 Jobs AI 上下文，不要假设固定安装位置。
+如果 Python 路径已在 Settings 中覆盖，plist 应使用配置后的绝对路径。生成前先查看 Settings 或 Jobs 上下文，不要假设固定安装位置。
 
-建议让 Shell 入口统一 `source ~/keyoti/shs/workspace-scripts/automation-common.sh`。这个公共入口负责扩展 launchd 下较短的 `PATH`、解析 `KEYOTI_HOME` 与寻找 Python。
+建议让 Shell 入口统一 `source ~/keyoti/shs/workspace-scripts/automation-common.sh`。公共入口负责扩展 `launchd` 下较短的 PATH、解析 `KEYOTI_HOME` 与寻找 Python。
 
-## 4. Jobs 编排
+## 4. Jobs 编排与双前缀迁移
 
-每个 plist 使用唯一的 `com.notchwow.` Label，并在 `ProgramArguments` 中使用绝对路径。stdout 与 stderr 建议写入 `~/keyoti/launchds/` 下对应的 `.stdout.log` 和 `.stderr.log` 文件。
+新 plist 使用唯一的 `com.benbenben.*` Label，并在 `ProgramArguments` 中使用绝对路径。stdout 与 stderr 建议写入 `~/keyoti/launchds/` 下对应的 `.stdout.log` 和 `.stderr.log`。
 
-Jobs 工作区会自动清理缺少本地 plist 的已加载 `com.notchwow.*` 服务。移动或重命名 plist 前先卸载任务。agent 不应未经确认直接执行 `launchctl bootstrap`、`bootout` 或删除操作。
+`com.notchwow.*` 是旧版兼容前缀，规则如下：
 
-修改已加载 Job 的 plist 不会立即改变正在运行的进程。完成文件编辑后，先执行静态检查；只有用户明确同意 reload 时，才执行卸载与重新加载。
+- 继续识别并显示旧 plist 和服务状态。
+- 不自动改名为 `com.benbenben.*`。
+- 不自动 bootstrap、bootout、删除或替换。
+- 不把新前缀的孤儿清理策略扩展到旧前缀。
+- 只有用户明确要求迁移某个 Job 时，才先展示 plist Diff 和状态变化，再逐项确认执行。
 
-## 5. 安全默认值
+修改已加载 Job 的 plist 不会改变正在运行的进程。文件编辑完成后先静态检查；只有用户明确批准 reload 时，才执行卸载和重新加载。
 
-- 定时任务应优先使用确定性的本地逻辑。AI 或网络请求可以增强结果，但不应成为生成基本产物的唯一方式。
-- 定时任务默认不得自动修改文献元数据、自动提交代码、自动推送仓库或自动向聊天联系人发送消息。
-- Papis 等资料库适合定时做只读审计；需要写入时由用户显式触发并检查差异。
-- GUI 自动化默认只生成草稿。真正点击发送、删除、覆盖或执行不可逆操作前，需要显式参数或用户确认。
-- 对每日内容采用带日期目录或文件名，并先检查今天的产物是否存在。缺失时立即尝试构建，重复运行保持幂等。
-- 所有给人阅读的 AI 或自动生成报告统一输出为 `.html`。JSON 只用于机器状态，不要把 Markdown 作为面向用户的最终报告格式。
-- Markdown 笔记是只读知识源。根据笔记生成的练习页面写入 `~/Desktop/Keyoti_Reports/note-exercises/`，不得回写 `~/keyoti/mds/`。
+Agent 不得未经确认执行 `launchctl bootstrap`、`bootout`、`kickstart` 或删除操作。
 
-## 6. 质量检查
+## 5. Runtime action 安全边界
 
-生成或修改文件后至少执行对应检查：
+Codex 或其他 Agent 触发工具时，只能引用 `Runtime/manifest.json` 中的固定 action ID：
+
+```text
+id / title / summary / executable / arguments / cwd / risk / inputSchema
+```
+
+- executable 必须是 Runtime 内的相对路径。
+- argv 必须来自 manifest，模型不能追加任意参数。
+- `read` action 可直接运行；`write`、`execute` 和其他非只读 action 必须审批。
+- Runtime 安装和 App 启动不得隐式执行 Brewfile、macOS defaults、Git sync/push、服务启动或端口清理。
+
+## 6. 安全默认值
+
+- 定时任务优先使用确定性的本地逻辑。AI 或网络请求可以增强结果，但不应成为生成基本产物的唯一方式。
+- 定时任务默认不得自动修改文献元数据、提交代码、推送仓库或向联系人发送消息。
+- Papis 等资料库适合定时做只读审计；写入必须由用户显式触发并检查差异。
+- GUI 自动化默认只生成草稿。点击发送、删除、覆盖或执行不可逆动作前，需要显式参数或用户确认。
+- 每日产物采用带日期目录或文件名，并先检查当天产物是否存在；重复运行保持幂等。
+- 所有给人阅读的 AI 或自动化报告统一输出为 `.html`。JSON 只用于机器状态，不把 Markdown 作为面向用户的最终报告格式。
+- Markdown 笔记是只读知识源。笔记派生的练习页面写入 `~/Desktop/Keyoti_Reports/note-exercises/`，不得回写 `~/keyoti/mds/`。
+- 文件锁保护的 Markdown、脚本和 plist 不可写；不要用 chmod/chflags 绕过锁。
+
+## 7. 质量检查
 
 ```bash
 zsh -n ~/keyoti/shs/workspace-scripts/task.sh
 python -m py_compile ~/keyoti/pys/task.py
-osacompile -o /tmp/notchwow-check.scpt ~/keyoti/applescripts/task.applescript
+osacompile -o /tmp/benbenben-check.scpt ~/keyoti/applescripts/task.applescript
+plutil -lint ~/keyoti/launchds/com.benbenben.task.plist
+```
+
+检查旧 Job 时保持原文件名和 Label：
+
+```bash
 plutil -lint ~/keyoti/launchds/com.notchwow.task.plist
 ```
 

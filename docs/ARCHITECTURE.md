@@ -1,139 +1,175 @@
-# notchwow 架构说明
+# BenBenBen 架构说明
 
-## 1. 项目定位
+## 1. 产品边界
 
-`notchwow` 是一个 SwiftPM 管理的 macOS 原生可执行应用。AppKit 负责屏幕、窗口层级、目录打开和事件监控；SwiftUI 负责工作台界面；vendored `swift-markdown-engine` 负责 Markdown 编辑器能力。
+`BenBenBen` 是由 SwiftPM 管理的 macOS 26 原生应用。它有两个入口：
 
-SwiftPM 产品名和主 target 均为 `notchwow`：
+- SwiftUI 主窗口：个人 Codex 会话、知识、任务、工具与自动化工作台。
+- AppKit 刘海 `NSPanel`：Ben龙快速入口、Agent 状态和审批提醒；无刘海时回退为顶部浮动入口。
+
+原始个人资料只保存在 `~/keyoti`；派生数据库只保存搜索索引和 UI 元数据。Codex 会话正文由 app-server thread API 管理。
+
+SwiftPM 身份统一为：
 
 ```text
 Package.swift
-└── executable product: notchwow
-    └── target: notchwow
+├── executable product: BenBenBen
+│   └── target: BenBenBen
+└── executable product: BenBenBenLoginHelper
+    └── target: BenBenBenLoginHelper
 ```
 
-## 2. 启动链路
+App bundle 为 `BenBenBen.app`，Bundle ID 为 `io.github.benjaminisgood.benbenben`。
 
-1. `Sources/notchwow/main.swift` 创建 `NSApplication` 并注册 `AppDelegate`。
-2. `AppDelegate.applicationDidFinishLaunching` 创建 `NotchPanelController`、状态栏图标和菜单。
-3. `NotchPanelController` 作为 composition root，持有状态 Store、命令 Runner、热区面板和抽屉面板。
-4. `NotchPanelController.rebuildContent` 把依赖注入 `NotebookView`。
-5. 鼠标进入刘海热区后，控制器展开 SwiftUI 工作台；鼠标离开后延迟折叠。
+## 2. 启动与 Scene
 
-## 3. UI 分层
+1. `Sources/BenBenBen/App/BenBenBenApp.swift` 通过 SwiftUI `@main App` 启动。
+2. `WindowGroup("BenBenBen", id: "main")` 提供主工作台。
+3. `Settings` 提供 Codex、语音、目录、权限和 Runtime 设置入口。
+4. `MenuBarExtra` 在主窗口关闭后继续提供打开 App、Ben龙和退出入口。
+5. `AppDelegate` 只承担必要的 AppKit 生命周期衔接；`AppModel` 持有应用级导航和模块入口。
+6. `NotchPanelController` 只负责刘海面板、屏幕几何与展开/收起，不再作为全部状态的唯一 composition root。
 
-### AppKit 层
+普通启动打开主窗口并保持 Ben龙驻留。关闭最后一个主窗口不会终止 App。
+
+启用登录启动后，`Contents/Library/LoginItems/BenBenBenLoginHelper.app` 以
+`--companion-only` 启动主 App：只显示 Ben龙与 MenuBarExtra，不自动打开主工作台；用户从菜单或 Ben龙进入主窗口时再切回普通 App activation policy。
+
+## 3. 模块分层
+
+### App 与主窗口
+
+| 位置 | 职责 |
+| --- | --- |
+| `App/BenBenBenApp.swift` | Scene、Commands、Settings、MenuBarExtra。 |
+| `App/AppModel.swift` | 应用导航、主窗口/Ben龙入口、模块模型装配。 |
+| `App/WorkbenchEnvironment.swift` | 现有 Markdown、Scripts、Python、AppleScript、Jobs store 的统一生命周期。 |
+| `Views/Main/MainWindowView.swift` | `NavigationSplitView`、Liquid Glass 首页与 Inspector。 |
+| `NotchPanelController.swift` | AppKit 刘海/浮动 panel、屏幕几何和事件桥接。 |
+
+主窗口路由包含 Home、Today、Inbox、Agents、Knowledge、Scripts、Python 和 Automations。现有 `NotebookView` 继续承载成熟的工作台视图，逐步由模块模型接入主窗口。
+
+### Agent
+
+`Sources/BenBenBen/Agent/` 定义稳定的 App 内部边界：
+
+| 类型 | 职责 |
+| --- | --- |
+| `AgentRuntime` | 启动/停止、账户、线程、turn、interrupt、审批和 `AsyncStream<AgentEvent>`。 |
+| `CodexExecutableDetector` | 发现用户选择或 PATH 中的 Codex executable，并显示版本。 |
+| `CodexProcessActor` | 长驻运行 `codex app-server --stdio`，管理 JSONL request/response、stderr 与重启。 |
+| `AgentStore` | 把线程、delta、Diff、命令输出、token、审批和错误投影到 SwiftUI。 |
+
+首版使用稳定 app-server 协议，不依赖 realtime、dynamic tools 等实验 API。解码器允许服务端增加未知字段；未知事件会记录而不是导致进程崩溃。Codex 登录由所选 executable 自己管理，App 不读取或复制 `auth.json`。
+
+已验证协议固定在 `ProtocolSchemas/Codex-<version>/`。版本变化时 App 显示契约警告；升级基线必须先重新生成 schema 并跑契约测试。
+
+### 个人知识与任务
+
+`Sources/BenBenBen/Personal/` 负责 `~/keyoti` 的只读索引和受控任务写入：
+
+| 类型 | 职责 |
+| --- | --- |
+| `WorkspaceRegistry` | Markdown、Shell、Python、AppleScript 和 launchd 的唯一根目录注册表。 |
+| `PersonalSearchIndex` | SQLite FTS5 派生索引、mtime/内容哈希增量刷新、来源路径和行号。 |
+| `PersonalTaskService` | 识别 checkbox、`TODO:`/`待完成:`、日期和标签；执行带行哈希校验的完成操作。 |
+| `PersonalWorkspaceStore` | SwiftUI 查询、刷新、Inbox 捕获和冲突错误状态。 |
+
+快速捕获写入 `~/keyoti/mds/Inbox.md`。任务更新前会核对原行哈希并尊重系统级文件锁；外部修改或锁定时拒绝覆盖。
+
+### 现有工作台
 
 | 文件 | 职责 |
 | --- | --- |
-| `AppDelegate.swift` | 应用生命周期、菜单栏、全局快捷菜单。 |
-| `NotchPanelController.swift` | 刘海热区、窗口展开折叠、鼠标轮询、Store 装配。 |
-| `SettingsPopoverController.swift` | 设置弹窗窗口与点击外部关闭逻辑。 |
-| `NotchGeometry.swift` | 目标屏幕、刘海测量、面板尺寸。 |
-| `TerminalAppBridge.swift` | 使用 `osascript` 在 Terminal.app 打开指定目录。 |
+| `NoteStore.swift` | Markdown 文件发现、保存、外部同步。 |
+| `CodeFileStore.swift` | Python 与 AppleScript 文件存储。 |
+| `ShellWorkspaceStore.swift` | Shell workspace、脚本和 transcript。 |
+| `ScriptsModuleState.swift` | Scripts 搜索、命令和语言状态。 |
+| `FilePermissionLockStore.swift` | UI 与文件系统双层写保护。 |
+| `TerminalAppBridge.swift` | 在 Terminal.app 打开目录或运行用户确认的命令。 |
+| `PythonReplRunner.swift` | 管理 Python 子进程及 JSON 行协议。 |
+| `LaunchdJobStore.swift` | plist 扫描、保存、加载、卸载与状态。 |
 
-### SwiftUI 层
+`Vendor/swift-markdown-engine` 继续提供 TextKit 2、Markdown、wiki links、附件、任务 checkbox、代码高亮和 LaTeX 能力。
 
-`NotebookView.swift` 是工作台 UI 的 composition root。各模式视图位于 `Sources/notchwow/Views/` 下的 `Markdown`、`Scripts`、`Python`、`AppleScript`、`Launchd` 和 `Shared` 子目录。当前可见模式如下：
+## 4. Runtime
 
-| 模式 | 标题 | 核心能力 |
-| --- | --- | --- |
-| Markdown | `MD` | 笔记、附件、Markdown 工具栏、AI 修改、AI 问答。 |
-| Scripts | `Scripts` | Shell 与 AppleScript 脚本维护、toolkit 命令发现、Terminal 启动。 |
-| Python | `Py` | Python 文件、Conda 环境、持久 REPL。 |
-| Launchd | `Jobs` | plist 编辑、加载、卸载、AI 生成。 |
+版本化源位于仓库 `Runtime/`，并作为 `BenBenBen.app/Contents/Resources/Runtime` 打包。安装器把版本复制到：
 
-### 状态与存储层
+```text
+~/Library/Application Support/BenBenBen/Runtime/
+├── releases/<version>/
+└── current -> releases/<version>
+```
 
-| 文件 | 职责 |
-| --- | --- |
-| `NoteStore.swift` | Markdown 文件发现、切换、保存、外部变更同步。 |
-| `CodeFileStore.swift` | Python 和 AppleScript 文件的通用存储。 |
-| `ShellWorkspaceStore.swift` | Shell workspace、脚本和历史 transcript。 |
-| `ScriptsModuleState.swift` | Scripts 模块的 Shell/AppleScript 当前语言、脚本搜索和命令选择状态。 |
-| `WorkspaceDirectoryStore.swift` | 用户可编辑的工作目录和持久化。 |
-| `LocalImageStore.swift` | Markdown 附件复制、manifest、图片解析。 |
-| `LaunchdJobStore.swift` | plist 扫描、保存、加载、卸载、孤儿服务清理。 |
-| `AppSettingsStore.swift` | 触发方式、百炼 API Key、AI 模型。 |
+`current` 通过原子符号链接切换。受管 `~/.zshrc` 区块把 Runtime `bin` 加入 PATH，并加载同一份 `Benshell/zsh/init.zsh`。
 
-### 执行与外部系统层
+`Runtime/manifest.json` 的 action 数据契约为：
 
-| 文件 | 职责 |
-| --- | --- |
-| `CommandRunner.swift` | 保留旧历史 transcript 与部分脚本执行能力；Scripts 命令启动已交给 Terminal.app。 |
-| `TerminalAppBridge.swift` | 使用 `osascript` 在 Terminal.app 打开目录或启动命令。 |
-| `PythonReplRunner.swift` | 维护 Python 子进程，通过 JSON 行协议执行输入和文件。 |
-| `CondaEnvironmentStore.swift` | 发现 Conda 环境，生成 Python 启动配置。 |
-| `MarkdownAIEditStore.swift` | 调用百炼兼容接口生成 Markdown 局部替换。 |
-| `MarkdownAIChatStore.swift` | 基于当前 Markdown 内容进行问答。 |
-| `ScriptAIEditStore.swift` | 为 Shell、Python、AppleScript 生成可预览、拒绝或应用的完整脚本提案。 |
-| `LaunchdAIAgent.swift` | 根据现有脚本和任务上下文生成 plist。 |
-| `BailianChatClient.swift` | 百炼兼容接口的统一 endpoint、鉴权、超时和错误处理。 |
+```text
+id / title / summary / executable / arguments / cwd / risk / inputSchema
+```
 
-## 4. 默认目录
+`executable` 必须是 Runtime 内相对路径，`arguments` 是固定数组。`benbenben tools run` 不接受额外 argv；非 `read` action 必须显式审批。
 
-默认根目录由当前用户 Home 动态计算，不再写死账户名：
+Runtime 安装不会隐式运行 Brewfile、macOS defaults、Git sync/push、服务启动或端口清理。
+
+`Runtime/bin/benbenben-mcp` 是无第三方依赖的 stdio MCP helper，提供：
+
+- `search_knowledge`、`read_document`、`recent_activity`
+- `list_workflows`、`workflow_status`、`run_workflow`
+- `list_jobs`、`job_status`、`run_job`
+
+它不会接受任意 executable 或 argv。只读 manifest action 可执行；非只读 workflow 与 `run_job` 只返回 `approval_required`，由原生 App 完成审批。
+
+## 5. Ben龙与语音
+
+`MascotState` 包含 idle、listening、thinking、working、waitingApproval、success、error 和 sleep。状态由 Codex/语音事件驱动；SwiftUI 只负责呼吸与轻跳动画。九格视觉源还包含独立 logo pose，切片后作为八态透明 sprite 与 1024 App 图标。
+
+`VoiceInteractionController` 使用 Speech 与 AVFoundation：长按 250 ms 后录音、松开听写、两秒可取消倒计时后发送；不常驻监听。只有语音发起的短回复可按设置朗读，随时可停止。
+
+## 6. 默认目录
 
 ```text
 ~/keyoti/
 ├── mds/
+│   ├── Inbox.md
 │   └── attachments/
 ├── pys/
-│   └── transcript.log
 ├── shs/
+│   ├── workspace-scripts/
 │   ├── workspaces/
-│   ├── workspace-inputs/
-│   └── workspace-scripts/
+│   └── workspace-inputs/
 ├── applescripts/
 └── launchds/
 ```
 
-另外有两个可选集成，均可在 Settings 中覆盖默认值：
+`~/keyoti` 始终是个人文件的唯一真相，App 不自动搬迁或删除它。
 
-| 路径 | 用途 |
-| --- | --- |
-| `Scripts/benshell` | 已迁入 notchwow 仓库的 Benshell 初始化和命令目录。 |
-| `~/miniforge3` | Conda 与默认 Python 路径。 |
+## 7. 安全与审批
 
-## 5. 关键数据流
+- 读取与搜索可自动执行；任何文件写入先展示 Diff。
+- 命令、Jobs、删除、Git push 和外发动作进入审批。
+- Agent thread 默认使用用户选中的项目 cwd；个人会话默认 `/Users/ben/keyoti`。
+- 默认 sandbox 为 workspace-write、按需审批，不授予整个 Home unrestricted 权限。
+- 文件删除进入废纸篓并二次确认。
+- API Key 保存在 macOS Keychain；百炼仅作为 Advanced 中的旧版兼容 Provider。
+- Runtime action 只能引用 manifest 中的固定 action ID。
 
-### Markdown
+### launchd 双前缀兼容
 
-`MarkdownNoteEditor` -> `NativeTextViewWrapper` -> `NoteStore.updateText` -> Markdown 文件。
+- 新建 Job 使用 `com.benbenben.*`。
+- `com.notchwow.*` 是旧版兼容前缀，继续显示并保持当前 loaded/unloaded 状态。
+- BenBenBen 不自动重命名、卸载或删除旧 `com.notchwow.*` Job。
+- 新前缀的孤儿清理逻辑不得扩展到旧前缀。
 
-粘贴附件时，`LocalImageStore` 把文件复制到 `attachments/`，记录 manifest，并向文档插入 wiki 风格引用。
+## 8. 迁移兼容层
 
-### Scripts
+为了保留原 notchwow 与 notchNotes 用户数据：
 
-`ScriptsCommandToolbar` -> `ShellCommandStore` -> `TerminalAppBridge.run` -> Terminal.app。
+- 新偏好键使用 `benbenben.*`，同时读取 `notchwow.*`、`notchNotes.*` 等已知旧键。
+- 新 Keychain service 为 `io.github.benjaminisgood.benbenben`。旧 service 仅在 Advanced 中由用户明确点击导入，避免不同签名 ACL 在启动时弹窗；复制后不删除旧 item。
+- `benshell`、`notchwow`、`nw` 命令继续转发到统一 `benbenben` CLI。
+- 旧 `/Users/ben/Desktop/Benshell`、旧仓库和旧 App bundle 作为迁移备份保留到验收结束。
 
-toolkit 划分采用混合策略：本地文件按语言分为 `Shell scripts` 和 `AppleScripts`，迁入的 Benshell 命令按可执行脚本名/任务域分组，例如 `benshell`、`nanobot`、`deeptutor`、`papis`。Shell 历史仍保留在 `~/keyoti/shs/workspaces/*.log`，AppleScript 历史仍保留在 `~/keyoti/applescripts/transcript.log`。
-
-### Python
-
-`PythonCommandToolbar` -> `PythonReplRunner` -> Conda Python 子进程 -> JSON 行协议 -> `OutputView`。
-
-### Launchd
-
-`LaunchdPane` -> `LaunchdJobStore` -> plist 文件 -> `/bin/launchctl bootstrap|bootout`。
-
-## 6. 安全边界
-
-- Shell、Python、AppleScript 和 `launchd` 都会执行用户输入，应用不应接收不可信脚本。
-- 工作区删除操作统一使用 macOS 废纸篓，并在 UI 中二次确认。
-- Markdown、脚本和 Shell workspace 的磁盘写入错误会通过顶部警告徽标反馈给用户。
-- 从 Settings 在 Terminal 打开目录会触发 macOS Apple Events 权限提示。
-- AI 功能会把笔记内容或任务上下文发送到百炼兼容接口。
-- API Key 保存在 macOS Keychain；旧版 `UserDefaults` 明文会在首次启动时迁移并删除。
-- `LaunchdJobStore` 会自动清理缺少本地 plist 的 `com.notchwow.*` 已加载任务。修改此策略前需要确认产品语义。
-
-## 7. Vendored MarkdownEngine
-
-`Vendor/swift-markdown-engine` 是内置依赖，提供：
-
-- TextKit 2 编辑器包装。
-- Markdown tokenization 与样式。
-- Wiki links、附件、任务 checkbox。
-- 代码块高亮和 LaTeX bridge。
-
-业务层通过 `MarkdownEditorServices` 注入图片和 LaTeX 实现，避免 MarkdownEngine 反向依赖应用状态。
+兼容字符串是刻意保留的数据契约，品牌清理不能机械删除它们。

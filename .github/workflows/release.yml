@@ -11,10 +11,10 @@ permissions:
 
 jobs:
   notarized-release:
-    runs-on: macos-14
+    runs-on: macos-26
     env:
-      APP_DIR: ${{ runner.temp }}/notchwow.app
-      ZIP_PATH: ${{ runner.temp }}/notchwow.zip
+      APP_DIR: ${{ runner.temp }}/BenBenBen.app
+      ZIP_PATH: ${{ runner.temp }}/BenBenBen.zip
       KEYCHAIN_PATH: ${{ runner.temp }}/build.keychain-db
       SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -39,10 +39,13 @@ jobs:
 
       - name: Verify project
         run: |
-          swift build
+          swift build --product BenBenBen
           swift test
           ./Scripts/test-logic.sh
-          bash -n Scripts/build_and_run.sh Scripts/install-keyoti-agent-guide.sh Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-logic.sh
+          ./Scripts/test-runtime.sh
+          bash -n script/build_and_run.sh Scripts/build_and_run.sh Scripts/copy-runtime.sh Scripts/embed-login-helper.sh Scripts/install-keyoti-agent-guide.sh Scripts/install-runtime.sh Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-logic.sh Scripts/test-runtime.sh
+          /bin/zsh -n Runtime/install.zsh
+          python -m py_compile Runtime/bin/benbenben Runtime/bin/benbenben-mcp Scripts/process-mascot-assets.py
 
       - name: Package signed app
         run: COPY_TO_APPLICATIONS=0 ./Scripts/package-app.sh
@@ -52,11 +55,11 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: notchwow
-          path: ${{ runner.temp }}/notchwow.zip
+          name: BenBenBen
+          path: ${{ runner.temp }}/BenBenBen.zip
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "$ZIP_PATH#notchwow.zip" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" "$ZIP_PATH#BenBenBen.zip" --generate-notes

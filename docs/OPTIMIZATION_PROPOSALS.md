@@ -1,14 +1,14 @@
-# 优化推进记录
+# 历史优化推进记录（原 notchwow 阶段）
 
-下面记录已经确认并持续提交的优化项。
+下面保留迁移前已经确认并提交的优化项，供 Git 历史追溯。当前产品身份是 BenBenBen；旧 `notchwow.*`、`notchNotes.*` 与 `com.notchwow.*` 仅作为迁移兼容契约存在。
 
 ## P0: 发布身份统一 ✅ 已完成
 
 完成：
 
-- SwiftPM 产品、target、源码目录和本地 bundle 均统一为 `notchwow`。
-- `docs/index.html`、ZIP、bundle identifier 和仓库链接均切换到当前项目。
-- 默认偏好键切换到 `notchwow.*`，并保留一次旧键迁移。
+- 当时 SwiftPM 产品、target、源码目录和本地 bundle 统一为旧品牌 `notchwow`；现已再次统一为 `BenBenBen`。
+- 当前 ZIP、bundle identifier 和仓库链接使用 `BenBenBen` / `io.github.benjaminisgood.benbenben`。
+- 新偏好键使用 `benbenben.*`；`notchwow.*`、`notchNotes.*` 继续只读兼容。
 
 ## P0: API Key 迁移到 Keychain ✅ 已完成
 
@@ -26,9 +26,9 @@
 
 完成：Markdown、Shell、Python、AppleScript 和 Jobs 均支持顶部垃圾桶按钮确认后移到废纸篓。Shell workspace 会一起移动 transcript、input 和 script。清空输出按钮统一移动到底部运行控制区。
 
-## P1: 自动清理 launchd 服务 ✅ 已完成
+## P1: launchd 服务兼容策略 ✅ 已更新
 
-完成：按产品决定保留启动时自动卸载缺少本地 plist 的 `com.notchwow.*` 服务。
+原 notchwow 阶段曾自动卸载缺少本地 plist 的 `com.notchwow.*` 服务。BenBenBen 迁移已经收紧该策略：新 Job 使用 `com.benbenben.*`；旧 `com.notchwow.*` 始终保持原状态，不自动重命名、卸载或删除。
 
 ## P2: 拆分 NotebookView ✅ 已完成
 
@@ -55,7 +55,7 @@ Views/Shared/
 
 完成：
 
-1. 增加标准 `notchwowTests` SwiftPM test target，供安装完整 Xcode 的 CI runner 执行。
+1. 增加标准 SwiftPM test target；当前名称为 `BenBenBenTests`。
 2. CI 执行 Debug build、Release build、标准测试、逻辑 smoke tests、Shell 语法检查和 ZIP 校验。
 3. tag 发布流水线导入 Developer ID、执行 notarization、staple、ZIP 校验并上传 GitHub Release。
 

@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -15,10 +15,10 @@ jobs:
         run: swift --version
 
       - name: Debug build
-        run: swift build
+        run: swift build --product BenBenBen
 
       - name: Release build
-        run: swift build -c release --product notchwow
+        run: swift build -c release --product BenBenBen
 
       - name: Standard SwiftPM tests
         run: swift test
@@ -26,13 +26,19 @@ jobs:
       - name: Logic smoke tests
         run: ./Scripts/test-logic.sh
 
+      - name: Runtime tests
+        run: ./Scripts/test-runtime.sh
+
       - name: Shell syntax
-        run: bash -n Scripts/build_and_run.sh Scripts/install-keyoti-agent-guide.sh Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-logic.sh
+        run: |
+          bash -n script/build_and_run.sh Scripts/build_and_run.sh Scripts/copy-runtime.sh Scripts/embed-login-helper.sh Scripts/install-keyoti-agent-guide.sh Scripts/install-runtime.sh Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-logic.sh Scripts/test-runtime.sh
+          /bin/zsh -n Runtime/install.zsh
+          python -m py_compile Runtime/bin/benbenben Runtime/bin/benbenben-mcp Scripts/process-mascot-assets.py
 
       - name: Package ad hoc app
-        run: APP_DIR="$RUNNER_TEMP/notchwow.app" COPY_TO_APPLICATIONS=0 ./Scripts/package-app.sh
+        run: APP_DIR="$RUNNER_TEMP/BenBenBen.app" COPY_TO_APPLICATIONS=0 ./Scripts/package-app.sh
 
       - name: Validate ZIP
         run: |
-          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/notchwow.app" "$RUNNER_TEMP/notchwow.zip"
-          unzip -t "$RUNNER_TEMP/notchwow.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/BenBenBen.app" "$RUNNER_TEMP/BenBenBen.zip"
+          unzip -t "$RUNNER_TEMP/BenBenBen.zip"
