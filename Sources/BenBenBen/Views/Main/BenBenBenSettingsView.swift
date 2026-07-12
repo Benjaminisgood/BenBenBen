@@ -47,11 +47,21 @@ struct BenBenBenSettingsView: View {
 
             Form {
                 Toggle("Speak short voice-initiated replies", isOn: $voiceInteraction.speaksVoiceReplies)
+                Toggle(
+                    "Observe and react to screen changes",
+                    isOn: Binding(
+                        get: { model.screenContext.isEnabled },
+                        set: { model.screenContext.isEnabled = $0 }
+                    )
+                )
+                Text(model.screenContext.status.label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 LabeledContent(
                     "Speech recognition",
                     value: voiceInteraction.isRecording ? "Listening" : "On demand"
                 )
-                Text("BenBenBen never listens continuously. Hold Ben龙 to record and release to transcribe.")
+                Text("Voice is push-to-talk. Screen observation is separately visible, can be stopped at any time, and only sends changed frames to Codex while enabled.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

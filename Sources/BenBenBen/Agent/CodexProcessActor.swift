@@ -257,18 +257,25 @@ actor CodexProcessActor: AgentRuntime {
         )
     }
 
-    func startTurn(threadID: String, text: String) async throws -> AgentTurn {
+    func startTurn(threadID: String, text: String, localImagePath: String? = nil) async throws -> AgentTurn {
+        var input: [AgentJSON] = [
+            .object([
+                "type": .string("text"),
+                "text": .string(text),
+                "text_elements": .array([])
+            ])
+        ]
+        if let localImagePath {
+            input.append(.object([
+                "type": .string("localImage"),
+                "path": .string(localImagePath)
+            ]))
+        }
         let result = try await sendRequest(
             method: "turn/start",
             params: .object([
                 "threadId": .string(threadID),
-                "input": .array([
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(text),
-                        "text_elements": .array([])
-                    ])
-                ])
+                "input": .array(input)
             ])
         )
         guard let turn = result["turn"] else {

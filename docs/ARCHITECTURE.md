@@ -2,10 +2,7 @@
 
 ## 1. 产品边界
 
-`BenBenBen` 是由 SwiftPM 管理的 macOS 26 原生应用。它有两个入口：
-
-- SwiftUI 主窗口：个人 Codex 会话、知识、任务、工具与自动化工作台。
-- AppKit 刘海 `NSPanel`：Ben龙快速入口、Agent 状态和审批提醒；无刘海时回退为顶部浮动入口。
+`BenBenBen` 是由 SwiftPM 管理的 macOS 26 原生刘海应用。AppKit 刘海 `NSPanel` 只承载“藏在刘海后面的龙”和放大后的对话舞台。HTML、PY、MD、SCRIPTS、PLIST 是五个独立、可同时存在的共同文件窗口，不再作为刘海中的写死标签页。无刘海时回退为顶部浮动入口。
 
 原始个人资料只保存在 `~/keyoti`；派生数据库只保存搜索索引和 UI 元数据。Codex 会话正文由 app-server thread API 管理。
 
@@ -24,30 +21,30 @@ App bundle 为 `BenBenBen.app`，Bundle ID 为 `io.github.benjaminisgood.benbenb
 ## 2. 启动与 Scene
 
 1. `Sources/BenBenBen/App/BenBenBenApp.swift` 通过 SwiftUI `@main App` 启动。
-2. `WindowGroup("BenBenBen", id: "main")` 提供主工作台。
-3. `Settings` 提供 Codex、语音、目录、权限和 Runtime 设置入口。
-4. `MenuBarExtra` 在主窗口关闭后继续提供打开 App、Ben龙和退出入口。
-5. `AppDelegate` 只承担必要的 AppKit 生命周期衔接；`AppModel` 持有应用级导航和模块入口。
-6. `NotchPanelController` 只负责刘海面板、屏幕几何与展开/收起，不再作为全部状态的唯一 composition root。
+2. `AppDelegate` 使用 `.accessory` activation policy，启动后立即显示紧凑刘海，不创建普通主窗口。
+3. `Settings` 是禁用状态恢复的辅助窗口，按需提供 Codex、语音、目录、权限和 Runtime 设置。
+4. `MenuBarExtra` 提供龙、五类共同窗口、Settings 和退出入口。
+5. `AppModel` 装配模块模型；`NotchPanelController` 是窄 AppKit 边界，只管理一个 `NSPanel` 的几何、键盘/鼠标事件和展开/收起。
+6. `NotchCompanionView` 长期作为同一个 hosting root；尺寸变化不会替换 Ben龙或 composer 的 SwiftUI 状态。
+7. `AgentArtifactWindowController` 按需创建五个普通 `NSWindow`，轮询外部文件变化，使 Codex 编辑和用户编辑保持同一画布。
 
-普通启动打开主窗口并保持 Ben龙驻留。关闭最后一个主窗口不会终止 App。
-
-启用登录启动后，`Contents/Library/LoginItems/BenBenBenLoginHelper.app` 以
-`--companion-only` 启动主 App：只显示 Ben龙与 MenuBarExtra，不自动打开主工作台；用户从菜单或 Ben龙进入主窗口时再切回普通 App activation policy。
+普通启动和 Login Item 启动均只显示刘海伙伴。`--companion-only` 参数继续作为登录 helper 的兼容参数，但不再改变界面模型。
 
 ## 3. 模块分层
 
-### App 与主窗口
+### App 与刘海工作台
 
 | 位置 | 职责 |
 | --- | --- |
 | `App/BenBenBenApp.swift` | Scene、Commands、Settings、MenuBarExtra。 |
-| `App/AppModel.swift` | 应用导航、主窗口/Ben龙入口、模块模型装配。 |
+| `App/AppModel.swift` | 刘海页面入口、Agent 与工作台模块模型装配。 |
 | `App/WorkbenchEnvironment.swift` | 现有 Markdown、Scripts、Python、AppleScript、Jobs store 的统一生命周期。 |
-| `Views/Main/MainWindowView.swift` | `NavigationSplitView`、Liquid Glass 首页与 Inspector。 |
-| `NotchPanelController.swift` | AppKit 刘海/浮动 panel、屏幕几何和事件桥接。 |
+| `Views/Main/NotchCompanionView.swift` | 常驻 Ben龙、出场动画、回复、审批、语音和 composer。 |
+| `Views/Main/AgentArtifactWindows.swift` | HTML / PY / MD / SCRIPTS / PLIST 五个文件共同窗口。 |
+| `Views/Main/NotchAgentView.swift` | 旧完整 Agent 诊断 UI，保留为兼容实现，不再作为默认刘海页面。 |
+| `NotchPanelController.swift` | 单一 AppKit 刘海/浮动 panel、屏幕几何和事件桥接。 |
 
-主窗口路由包含 Home、Today、Inbox、Agents、Knowledge、Scripts、Python 和 Automations。现有 `NotebookView` 继续承载成熟的工作台视图，逐步由模块模型接入主窗口。
+单击刘海龙进入近身对话，双击龙打开全部五类窗口。每个窗口只提供文件列表、共同编辑区和一个 Codex composer；创建、教学、改写、执行和自动化策略由真实 Agent 根据上下文决定。
 
 ### Agent
 
@@ -59,8 +56,10 @@ App bundle 为 `BenBenBen.app`，Bundle ID 为 `io.github.benjaminisgood.benbenb
 | `CodexExecutableDetector` | 发现用户选择或 PATH 中的 Codex executable，并显示版本。 |
 | `CodexProcessActor` | 长驻运行 `codex app-server --stdio`，管理 JSONL request/response、stderr 与重启。 |
 | `AgentStore` | 把线程、delta、Diff、命令输出、token、审批和错误投影到 SwiftUI。 |
+| `ScreenContextMonitor` | 显式授权的 ScreenCaptureKit 采样、变化检测与 `localImage` 上下文。 |
+| `AgentOperatingContract` | 每回合注入用户目录规则、五类产物方法论与风险审批边界。 |
 
-首版使用稳定 app-server 协议，不依赖 realtime、dynamic tools 等实验 API。解码器允许服务端增加未知字段；未知事件会记录而不是导致进程崩溃。Codex 登录由所选 executable 自己管理，App 不读取或复制 `auth.json`。
+集成使用稳定 app-server 协议及 `turn/start` 的 `localImage` 输入，不依赖私有屏幕 API 或复制认证。解码器允许服务端增加未知字段；未知事件会记录而不是导致进程崩溃。Codex 登录由所选 executable 自己管理，App 不读取或复制 `auth.json`。
 
 已验证协议固定在 `ProtocolSchemas/Codex-<version>/`。版本变化时 App 显示契约警告；升级基线必须先重新生成 schema 并跑契约测试。
 
@@ -124,7 +123,7 @@ Runtime 安装不会隐式运行 Brewfile、macOS defaults、Git sync/push、服
 
 ## 5. Ben龙与语音
 
-`MascotState` 包含 idle、listening、thinking、working、waitingApproval、success、error 和 sleep。状态由 Codex/语音事件驱动；SwiftUI 只负责呼吸与轻跳动画。九格视觉源还包含独立 logo pose，切片后作为八态透明 sprite 与 1024 App 图标。
+`MascotState` 包含 idle、listening、thinking、working、waitingApproval、success、error 和 sleep。业务状态由 Codex/语音事件驱动并可随时打断空闲动作；`MascotModel.presentedState` 在 idle 时克制地编排招手、思考、小睡和庆祝。SwiftUI 负责呼吸、轻跳、Reduce Motion 与资源缓存。九格视觉源还包含独立 logo pose，切片后作为八态透明 sprite 与 1024 App 图标。
 
 `VoiceInteractionController` 使用 Speech 与 AVFoundation：长按 250 ms 后录音、松开听写、两秒可取消倒计时后发送；不常驻监听。只有语音发起的短回复可按设置朗读，随时可停止。
 
@@ -132,6 +131,7 @@ Runtime 安装不会隐式运行 Brewfile、macOS defaults、Git sync/push、服
 
 ```text
 ~/keyoti/
+├── html/
 ├── mds/
 │   ├── Inbox.md
 │   └── attachments/

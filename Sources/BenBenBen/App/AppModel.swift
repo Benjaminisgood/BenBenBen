@@ -60,6 +60,8 @@ final class AppModel: ObservableObject {
     let personalWorkspace: PersonalWorkspaceStore
     let mascotModel: MascotModel
     let voiceInteraction: VoiceInteractionController
+    let screenContext: ScreenContextMonitor
+    let agentContext: NotchAgentContext
     let runtimeCatalog: RuntimeCatalogStore
     let loginItemStore: LoginItemStore
 
@@ -70,19 +72,28 @@ final class AppModel: ObservableObject {
     @Published private(set) var agentStore: AgentStore?
     @Published private(set) var agentConversation: [String: [AgentConversationEntry]] = [:]
 
-    private var isBootstrappingAgent = false
+    private var agentBootstrapTask: Task<Void, Never>?
     private var voiceReplyThreadID: String?
     private var archivedAgentTurnIDs = Set<String>()
     private var agentCancellables = Set<AnyCancellable>()
+    private lazy var artifactWindowController = AgentArtifactWindowController(
+        agentContext: agentContext,
+        screenContext: screenContext,
+        onPrompt: { [weak self] prompt, focusedFile in
+            self?.sendQuickPrompt(prompt, focusedFile: focusedFile)
+        }
+    )
     private lazy var notchController = NotchPanelController(
         environment: workbench,
         mascotModel: mascotModel,
         voiceInteraction: voiceInteraction,
+        screenContext: screenContext,
+        agentContext: agentContext,
         onSendPrompt: { [weak self] prompt in
-            self?.sendQuickPrompt(prompt)
+            self?.sendAgentComposer(prompt)
         },
-        onOpenAgent: { [weak self] in
-            self?.showRelatedAgentThread()
+        onOpenCollaboration: { [weak self] in
+            self?.showArtifactWindows()
         }
     )
 
@@ -91,6 +102,8 @@ final class AppModel: ObservableObject {
         personalWorkspace = PersonalWorkspaceStore()
         mascotModel = MascotModel()
         voiceInteraction = VoiceInteractionController()
+        screenContext = ScreenContextMonitor()
+        agentContext = NotchAgentContext()
         runtimeCatalog = RuntimeCatalogStore()
         loginItemStore = LoginItemStore()
 
@@ -104,7 +117,10 @@ final class AppModel: ObservableObject {
             mascotModel?.showError(message)
         }
         voiceInteraction.onSend = { [weak self] prompt in
-            self?.sendQuickPrompt(prompt, voiceInitiated: true)
+            self?.sendAgentComposer(prompt, voiceInitiated: true)
+        }
+        screenContext.onSignificantChange = { [weak self] screenshotURL in
+            self?.reactToScreen(screenshotURL)
         }
     }
 
@@ -112,6 +128,9 @@ final class AppModel: ObservableObject {
         guard !didStart else { return }
         didStart = true
         notchController.showDocked()
+        if screenContext.isEnabled {
+            screenContext.start()
+        }
         Task {
             await personalWorkspace.refresh()
         }
@@ -124,34 +143,55 @@ final class AppModel: ObservableObject {
         notchController.expand(animated: true)
     }
 
-    func showWorkbench(_ mode: WorkbenchMode) {
-        workbench.workbenchState.select(mode)
-        selectedRoute = switch mode {
-        case .markdown: .knowledge
-        case .scripts: .scripts
-        case .python: .python
-        case .tasks: .automations
-        }
-        showMainWindow()
+    func showAgent() {
+        notchController.showAgent()
     }
 
-    func showMainWindow() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.title == "BenBenBen" }) {
-            window.makeKeyAndOrderFront(nil)
+    func showArtifactWindows() {
+        artifactWindowController.showAll()
+    }
+
+    func showArtifactWindow(_ kind: AgentArtifactKind) {
+        artifactWindowController.show(kind)
+    }
+
+    func createAgentThread() {
+        showAgent()
+        Task {
+            if agentStore == nil {
+                await bootstrapAgent()
+            }
+            _ = await agentStore?.createThread()
         }
+    }
+
+    func showWorkbench(_ mode: WorkbenchMode) {
+        workbench.workbenchState.select(mode)
+        notchController.showWorkbenchMode(mode)
     }
 
     func bootstrapAgent() async {
-        guard agentStore == nil, !isBootstrappingAgent else { return }
-        isBootstrappingAgent = true
-        defer { isBootstrappingAgent = false }
+        guard agentStore == nil else { return }
+        if let agentBootstrapTask {
+            await agentBootstrapTask.value
+            return
+        }
 
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performAgentBootstrap()
+        }
+        agentBootstrapTask = task
+        await task.value
+        agentBootstrapTask = nil
+    }
+
+    private func performAgentBootstrap() async {
         do {
             let preferredPath = UserDefaults.standard.string(forKey: "benbenben.codexExecutable")
             let store = try await AgentStore.live(preferredCodexPath: preferredPath)
             agentStore = store
+            notchController.updateAgentStore(store)
             mascotModel.bind(to: store)
             observeVoiceReplyCompletion(in: store)
             await store.connect()
@@ -160,7 +200,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func sendQuickPrompt(_ prompt: String, voiceInitiated: Bool = false) {
+    func sendQuickPrompt(
+        _ prompt: String,
+        voiceInitiated: Bool = false,
+        focusedFile: URL? = nil,
+        screenImageURL: URL? = nil
+    ) {
         Task {
             if agentStore == nil {
                 await bootstrapAgent()
@@ -178,7 +223,22 @@ final class AppModel: ObservableObject {
             if voiceInitiated {
                 voiceReplyThreadID = threadID
             }
-            if await store.send(prompt, to: threadID) != nil {
+            let screenshotURL: URL?
+            if let screenImageURL {
+                screenshotURL = screenImageURL
+            } else {
+                screenshotURL = await screenContext.captureLatest()
+            }
+            let governedPrompt = AgentOperatingContract.prompt(
+                prompt,
+                focusedFile: focusedFile,
+                includesScreen: screenshotURL != nil
+            )
+            if await store.send(
+                governedPrompt,
+                to: threadID,
+                localImagePath: screenshotURL?.path
+            ) != nil {
                 agentConversation[threadID, default: []].append(
                     AgentConversationEntry(role: .user, text: prompt)
                 )
@@ -186,17 +246,20 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func sendAgentComposer(_ prompt: String) {
+    func sendAgentComposer(_ prompt: String, voiceInitiated: Bool = false) {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         guard let store = agentStore,
               let threadID = store.selectedThreadID,
               let activeTurn = store.activeTurns[threadID],
               Self.isRunning(activeTurn.status) else {
-            sendQuickPrompt(text)
+            sendQuickPrompt(text, voiceInitiated: voiceInitiated)
             return
         }
 
+        if voiceInitiated {
+            voiceReplyThreadID = threadID
+        }
         agentConversation[threadID, default: []].append(
             AgentConversationEntry(role: .user, text: text)
         )
@@ -205,12 +268,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func showRelatedAgentThread() {
-        if let threadID = mascotModel.relatedThreadID {
-            agentStore?.selectedThreadID = threadID
+    private func reactToScreen(_ screenshotURL: URL) {
+        if let store = agentStore,
+           let threadID = store.selectedThreadID,
+           let turn = store.activeTurns[threadID],
+           Self.isRunning(turn.status) {
+            return
         }
-        selectedRoute = .agents
-        showMainWindow()
+        sendQuickPrompt(
+            "主动观察我当前屏幕。如果有明显错误、阻塞、可继续的工作或值得提醒的内容，请简短回应；否则只回复“继续陪伴”。不要未经确认执行风险动作。",
+            screenImageURL: screenshotURL
+        )
     }
 
     private func observeVoiceReplyCompletion(in store: AgentStore) {

@@ -3,9 +3,64 @@ import MarkdownEngine
 import MarkdownEngineLatex
 import SwiftUI
 
+enum NotchDestination: String, CaseIterable, Identifiable {
+    case agent
+    case markdown
+    case scripts
+    case python
+    case tasks
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .agent: return "Agent"
+        case .markdown: return "MD"
+        case .scripts: return "Scripts"
+        case .python: return "Py"
+        case .tasks: return "Jobs"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .agent: return "sparkles"
+        case .markdown: return WorkbenchMode.markdown.systemImage
+        case .scripts: return WorkbenchMode.scripts.systemImage
+        case .python: return WorkbenchMode.python.systemImage
+        case .tasks: return WorkbenchMode.tasks.systemImage
+        }
+    }
+
+    var workbenchMode: WorkbenchMode? {
+        switch self {
+        case .agent: return nil
+        case .markdown: return .markdown
+        case .scripts: return .scripts
+        case .python: return .python
+        case .tasks: return .tasks
+        }
+    }
+
+    static func workbench(_ mode: WorkbenchMode) -> NotchDestination {
+        switch mode {
+        case .markdown: return .markdown
+        case .scripts: return .scripts
+        case .python: return .python
+        case .tasks: return .tasks
+        }
+    }
+}
+
+@MainActor
 final class DrawerState: ObservableObject {
     @Published var isExpanded = false
     @Published var revealProgress: CGFloat = 0
+    @Published var activeDestination: NotchDestination = .agent
+
+    func select(_ destination: NotchDestination) {
+        activeDestination = destination
+    }
 }
 
 struct NotebookView: View {
@@ -34,13 +89,8 @@ struct NotebookView: View {
     @ObservedObject var pythonRunner: PythonReplRunner
     @ObservedObject var appleScriptRunner: CommandRunner
     @ObservedObject var mascotModel: MascotModel
-    @ObservedObject var voiceInteraction: VoiceInteractionController
     let layout: NotchLayout
-    let onSendPrompt: (String) -> Void
-    let onOpenAgent: () -> Void
     let onOpenSettings: () -> Void
-
-    @State private var quickPrompt = ""
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -79,47 +129,6 @@ struct NotebookView: View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 10) {
                 HStack(alignment: .center, spacing: 10) {
-                    Button(action: onOpenAgent) {
-                        MascotView(state: mascotModel.state, size: 30)
-                    }
-                    .buttonStyle(.plain)
-                    .help(mascotModel.bubbleText ?? mascotModel.state.shortLabel)
-
-                    TextField(
-                        mascotModel.bubbleText ?? "Ask Ben龙…",
-                        text: $quickPrompt
-                    )
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 10)
-                    .frame(minWidth: 170, maxWidth: 280, minHeight: 28)
-                    .background(.white.opacity(0.07), in: .capsule)
-                    .onSubmit(sendQuickPrompt)
-
-                    Button(action: sendQuickPrompt) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 17))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.mint)
-                    .disabled(quickPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button {
-                        if voiceInteraction.isRecording {
-                            voiceInteraction.stopRecording()
-                        } else {
-                            Task { await voiceInteraction.startRecording() }
-                        }
-                    } label: {
-                        Image(systemName: voiceInteraction.isRecording ? "stop.circle.fill" : "mic.circle")
-                            .font(.system(size: 17))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(voiceInteraction.isRecording ? .red : .secondary)
-
-                    Divider()
-                        .frame(height: 22)
-
                     WorkbenchModeControl(workbenchState: workbenchState)
 
                     Spacer()
@@ -201,16 +210,13 @@ struct NotebookView: View {
     }
 
     private var compactIcon: some View {
-        MascotView(state: mascotModel.state, size: 28)
+        MascotView(
+            state: mascotModel.presentedState,
+            size: 28,
+            revision: mascotModel.presentationRevision
+        )
             .frame(width: layout.compactSize.width, height: layout.compactSize.height)
             .opacity(1 - drawerState.revealProgress)
-    }
-
-    private func sendQuickPrompt() {
-        let text = quickPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        quickPrompt = ""
-        onSendPrompt(text)
     }
 
     private var revealWidth: CGFloat {

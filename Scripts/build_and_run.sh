@@ -93,6 +93,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>BenBenBen uses the microphone only while you hold to talk with Ben龙.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
   <string>BenBenBen converts your push-to-talk audio into text for your agent.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>BenBenBen shares visible screen changes with Codex only while screen context is enabled.</string>
 </dict>
 </plist>
 PLIST

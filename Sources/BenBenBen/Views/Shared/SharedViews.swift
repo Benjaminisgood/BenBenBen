@@ -415,10 +415,14 @@ struct CompactNotchView: View {
     @ObservedObject var voiceInteraction: VoiceInteractionController
 
     var body: some View {
-        HStack(spacing: 8) {
-            MascotView(state: mascotModel.state, size: 29)
+        HStack(alignment: .bottom, spacing: 8) {
+            MascotView(
+                state: mascotModel.presentedState,
+                size: 44,
+                revision: mascotModel.presentationRevision
+            )
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(mascotModel.state.shortLabel)
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.90))
@@ -427,6 +431,7 @@ struct CompactNotchView: View {
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(1)
             }
+            .padding(.bottom, 7)
 
             Spacer(minLength: 0)
 
@@ -434,13 +439,20 @@ struct CompactNotchView: View {
                 Text("\(seconds)")
                     .font(.system(size: 14, weight: .black, design: .rounded))
                     .foregroundStyle(.orange)
+                    .padding(.bottom, 8)
             } else if mascotModel.state == .waitingApproval {
                 Image(systemName: "hand.raised.fill")
                     .foregroundStyle(.orange)
+                    .padding(.bottom, 9)
             }
         }
             .padding(.horizontal, 10)
-            .frame(width: layout.compactSize.width, height: layout.compactSize.height)
+            .padding(.bottom, 5)
+            .frame(
+                width: layout.compactSize.width,
+                height: layout.compactSize.height,
+                alignment: .bottom
+            )
             .background(Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98))
             .clipShape(TopAttachedRoundedShape(radius: 12))
             .overlay(
@@ -457,7 +469,7 @@ struct CompactNotchView: View {
         if let pending = voiceInteraction.pendingTranscript {
             return "点击取消：\(pending)"
         }
-        return mascotModel.bubbleText ?? "单击输入 · 按住说话"
+        return mascotModel.bubbleText ?? "单击展开 · 按住说话"
     }
 }
 

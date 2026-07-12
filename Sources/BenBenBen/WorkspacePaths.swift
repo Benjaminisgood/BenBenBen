@@ -49,6 +49,7 @@ enum WorkspacePaths {
     static let condaExecutable = condaRoot.appendingPathComponent("bin/conda", isDirectory: false)
     static let condaPythonExecutable = condaRoot.appendingPathComponent("bin/python", isDirectory: false)
     static let markdownRoot = root.appendingPathComponent("mds", isDirectory: true)
+    static let htmlRoot = root.appendingPathComponent("html", isDirectory: true)
     static let markdownAttachments = markdownRoot.appendingPathComponent("attachments", isDirectory: true)
     static let pythonRoot = root.appendingPathComponent("pys", isDirectory: true)
     static let pythonOutputFile = pythonRoot.appendingPathComponent("transcript.log", isDirectory: false)
@@ -68,6 +69,7 @@ enum WorkspacePaths {
         [
             root,
             markdownRoot,
+            htmlRoot,
             markdownAttachments,
             pythonRoot,
             shellRoot,

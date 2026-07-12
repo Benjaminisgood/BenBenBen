@@ -73,10 +73,10 @@ APP_DIR=/tmp/BenBenBen.app COPY_TO_APPLICATIONS=0 ./Scripts/package-app.sh
 
 ```text
 Sources/BenBenBen/
-├── App/                    SwiftUI App、AppModel、工作台环境
+├── App/                    SwiftUI Scene、AppModel、工作台环境
 ├── Agent/                  Codex app-server runtime 与 UI store
 ├── Personal/               WorkspaceRegistry、FTS5 索引、个人任务
-└── Views/                  主窗口和既有工作台视图
+└── Views/                  龙刘海界面、五类共同窗口与兼容工作台视图
 Runtime/                    版本化 Benshell、CLI、manifest、安装器
 Vendor/swift-markdown-engine/
 Resources/                  图标和 App 资源
@@ -105,9 +105,10 @@ GitHub Actions 和 Release workflow 生成 `BenBenBen.app` / `BenBenBen.zip` art
 
 ## 5. 修改后的最小验证
 
-- Swift/SwiftUI：`swift build --product BenBenBen`，再运行相关 `swift test`。
+- Swift/SwiftUI：`swift build --product BenBenBen`，再运行 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test`。
 - Runtime/CLI：`./Scripts/test-runtime.sh`。
 - App 生命周期、窗口或刘海 panel：`INSTALL_RUNTIME=0 UPDATE_ZSHRC=0 ./script/build_and_run.sh --verify`。
+- 屏幕上下文：在系统设置允许 Screen Recording 后开启眼睛按钮，确认 `~/keyoti/.benbenben/screen/latest.png` 更新，并可随时关闭。
 - bundle plist：
 
 ```bash

@@ -125,8 +125,14 @@ final class AgentProtocolTests: XCTestCase {
         XCTAssertEqual(resumed.id, "thread-1")
         try await runtime.archiveThread(id: "thread-1")
 
-        let turn = try await runtime.startTurn(threadID: "thread-new", text: "Run tests")
+        let turn = try await runtime.startTurn(
+            threadID: "thread-new",
+            text: "Run tests",
+            localImagePath: "/tmp/current-screen.png"
+        )
         XCTAssertEqual(turn.id, "turn-new")
+        XCTAssertTrue(fixture.trace.contains(#""type":"localImage""#))
+        XCTAssertTrue(fixture.trace.contains("current-screen.png"))
         let steeredID = try await runtime.steerTurn(
             threadID: "thread-new",
             turnID: "turn-new",

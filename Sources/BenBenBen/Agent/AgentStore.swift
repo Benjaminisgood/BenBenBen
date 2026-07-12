@@ -118,12 +118,17 @@ final class AgentStore: ObservableObject {
     }
 
     @discardableResult
-    func send(_ text: String, to threadID: String) async -> AgentTurn? {
+    func send(_ text: String, to threadID: String, localImagePath: String? = nil) async -> AgentTurn? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         agentMessages[threadID] = ""
         do {
-            let turn = try await runtime.startTurn(threadID: threadID, text: trimmed)
+            let turn = try await runtime.startTurn(
+                threadID: threadID,
+                text: trimmed,
+                localImagePath: localImagePath
+            )
+            lastError = nil
             activeTurns[threadID] = turn
             return turn
         } catch {
@@ -203,6 +208,7 @@ final class AgentStore: ObservableObject {
             tokenUsage[threadID] = usage
 
         case let .turnStarted(threadID, turn):
+            lastError = nil
             activeTurns[threadID] = turn
 
         case let .turnCompleted(threadID, turn):
