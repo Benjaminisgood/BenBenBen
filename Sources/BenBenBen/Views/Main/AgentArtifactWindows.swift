@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import WebKit
 
 enum AgentArtifactKind: String, CaseIterable, Identifiable, Sendable {
     case html
@@ -68,6 +69,7 @@ final class AgentArtifactStore: ObservableObject {
     @Published private(set) var files: [URL] = []
     @Published var selectedURL: URL?
     @Published var text = ""
+    @Published private(set) var contentRevision = 0
     @Published private(set) var externalChangeNotice: String?
     @Published private(set) var saveError: String?
 
@@ -165,6 +167,7 @@ final class AgentArtifactStore: ObservableObject {
             text = ""
             isApplyingFileContents = false
             selectedModificationDate = nil
+            contentRevision &+= 1
             return
         }
         do {
@@ -173,6 +176,7 @@ final class AgentArtifactStore: ObservableObject {
             text = loaded
             isApplyingFileContents = false
             selectedModificationDate = modificationDate(for: selectedURL)
+            contentRevision &+= 1
             saveError = nil
             externalChangeNotice = external ? "Codex 或外部程序刚刚更新了此文件" : nil
         } catch {
@@ -234,6 +238,21 @@ final class AgentArtifactWindowController {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window(for: kind).makeKeyAndOrderFront(nil)
+    }
+
+    func reveal(_ artifacts: [AgentArtifact]) async {
+        var newestByKind: [AgentArtifactKind: AgentArtifact] = [:]
+        for artifact in artifacts where newestByKind[artifact.kind] == nil {
+            newestByKind[artifact.kind] = artifact
+        }
+
+        for artifact in newestByKind.values.sorted(by: { $0.modifiedAt < $1.modifiedAt }) {
+            _ = window(for: artifact.kind)
+            guard let store = stores[artifact.kind] else { continue }
+            await store.refresh()
+            store.select(artifact.url)
+            show(artifact.kind)
+        }
     }
 
     private func window(for kind: AgentArtifactKind) -> NSWindow {
@@ -362,14 +381,19 @@ private struct AgentArtifactWindowView: View {
                 .padding(.horizontal, 10)
                 .frame(height: 28)
 
-                TextEditor(text: Binding(
-                    get: { store.text },
-                    set: { value in store.userEdited(value) }
-                ))
-                    .font(.system(.body, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .background(.black.opacity(0.12))
+                if store.kind == .html {
+                    LocalHTMLArtifactView(url: url, revision: store.contentRevision)
+                        .background(Color.white)
+                } else {
+                    TextEditor(text: Binding(
+                        get: { store.text },
+                        set: { value in store.userEdited(value) }
+                    ))
+                        .font(.system(.body, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .background(.black.opacity(0.12))
+                }
             } else {
                 ContentUnavailableView(
                     "这是 Agent 驱动的共同画布",
@@ -424,5 +448,37 @@ private struct AgentArtifactWindowView: View {
 
     private func relativePath(_ url: URL) -> String {
         url.path.replacingOccurrences(of: WorkspacePaths.root.path + "/", with: "")
+    }
+}
+
+private struct LocalHTMLArtifactView: NSViewRepresentable {
+    let url: URL
+    let revision: Int
+
+    final class Coordinator {
+        var loadedToken: String?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.allowsMagnification = true
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        let standardizedURL = url.standardizedFileURL
+        let token = "\(standardizedURL.path)#\(revision)"
+        guard context.coordinator.loadedToken != token else { return }
+        context.coordinator.loadedToken = token
+        webView.loadFileURL(
+            standardizedURL,
+            allowingReadAccessTo: WorkspacePaths.htmlRoot.standardizedFileURL
+        )
     }
 }

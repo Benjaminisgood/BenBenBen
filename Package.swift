@@ -27,7 +27,8 @@ let package = Package(
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("ScreenCaptureKit"),
                 .linkedFramework("Speech"),
-                .linkedFramework("AVFoundation")
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("WebKit")
             ]
         ),
         .executableTarget(

@@ -46,7 +46,14 @@ struct BenBenBenSettingsView: View {
             .tabItem { Label("Codex", systemImage: "sparkles") }
 
             Form {
-                Toggle("Speak short voice-initiated replies", isOn: $voiceInteraction.speaksVoiceReplies)
+                Toggle(
+                    "Keep voice conversation available",
+                    isOn: Binding(
+                        get: { voiceInteraction.isConversationEnabled },
+                        set: { voiceInteraction.setConversationEnabled($0) }
+                    )
+                )
+                Toggle("Speak short replies", isOn: $voiceInteraction.speaksVoiceReplies)
                 Toggle(
                     "Observe and react to screen changes",
                     isOn: Binding(
@@ -59,9 +66,11 @@ struct BenBenBenSettingsView: View {
                     .foregroundStyle(.secondary)
                 LabeledContent(
                     "Speech recognition",
-                    value: voiceInteraction.isRecording ? "Listening" : "On demand"
+                    value: voiceInteraction.isRecording
+                        ? "Continuously listening"
+                        : (voiceInteraction.isConversationEnabled ? "Resuming" : "Off")
                 )
-                Text("Voice is push-to-talk. Screen observation is separately visible, can be stopped at any time, and only sends changed frames to Codex while enabled.")
+                Text("Voice and screen observation remain enabled across launches until you turn them off. Ben龙 pauses the microphone while speaking to avoid hearing itself, then resumes automatically.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

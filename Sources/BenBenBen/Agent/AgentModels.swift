@@ -111,6 +111,11 @@ struct AgentTurn: Sendable, Equatable, Identifiable {
     }
 }
 
+struct AgentSentTurn: Sendable, Equatable {
+    let threadID: String
+    let turn: AgentTurn
+}
+
 struct AgentTokenUsage: Sendable, Equatable {
     struct Breakdown: Sendable, Equatable {
         let totalTokens: Int64
@@ -316,5 +321,10 @@ enum CodexBridgeError: Error, Sendable, LocalizedError {
         case let .unsupportedApproval(method, response):
             "Approval response \(response) is not valid for \(method)."
         }
+    }
+
+    var isMissingThread: Bool {
+        guard case let .server(code, message, _) = self else { return false }
+        return code == -32_600 && message.localizedCaseInsensitiveContains("thread not found")
     }
 }

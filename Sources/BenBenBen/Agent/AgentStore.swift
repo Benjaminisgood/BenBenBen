@@ -24,6 +24,7 @@ final class AgentStore: ObservableObject {
 
     private let runtime: any AgentRuntime
     private var eventTask: Task<Void, Never>?
+    private var loadedThreadIDs = Set<String>()
 
     init(runtime: any AgentRuntime) {
         self.runtime = runtime
@@ -32,25 +33,40 @@ final class AgentStore: ObservableObject {
 
     static func live(preferredCodexPath: String? = nil) async throws -> AgentStore {
         let installation = try await CodexExecutableDetector.detect(preferredPath: preferredCodexPath)
-        return AgentStore(runtime: CodexProcessActor(installation: installation))
+        var overrides: [String] = []
+        let helper = WorkspacePaths.mcpHelper
+        if FileManager.default.isExecutableFile(atPath: helper.path) {
+            let escapedPath = helper.path
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            overrides.append("mcp_servers.benbenben.command=\"\(escapedPath)\"")
+        }
+        return AgentStore(
+            runtime: CodexProcessActor(
+                installation: installation,
+                appServerConfigOverrides: overrides
+            )
+        )
     }
 
     deinit {
         eventTask?.cancel()
     }
 
-    func connect() async {
+    func connect(threadQuery: AgentThreadListQuery = AgentThreadListQuery()) async {
         lastError = nil
+        loadedThreadIDs.removeAll()
         do {
             _ = try await runtime.start()
             await refreshAccount()
-            await reloadThreads()
+            await reloadThreads(query: threadQuery)
         } catch {
             record(error)
         }
     }
 
     func disconnect() async {
+        loadedThreadIDs.removeAll()
         await runtime.stop()
     }
 
@@ -74,7 +90,7 @@ final class AgentStore: ObservableObject {
         do {
             let page = try await runtime.listThreads(query)
             threads = page.threads
-            if selectedThreadID == nil {
+            if selectedThreadID == nil || !page.threads.contains(where: { $0.id == selectedThreadID }) {
                 selectedThreadID = page.threads.first?.id
             }
         } catch {
@@ -87,7 +103,9 @@ final class AgentStore: ObservableObject {
         do {
             let thread = try await runtime.startThread(options)
             upsert(thread)
+            loadedThreadIDs.insert(thread.id)
             selectedThreadID = thread.id
+            lastError = nil
             return thread
         } catch {
             record(error)
@@ -100,7 +118,9 @@ final class AgentStore: ObservableObject {
         do {
             let thread = try await runtime.resumeThread(id: id, cwd: cwd)
             upsert(thread)
+            loadedThreadIDs.insert(thread.id)
             selectedThreadID = thread.id
+            lastError = nil
             return thread
         } catch {
             record(error)
@@ -118,20 +138,49 @@ final class AgentStore: ObservableObject {
     }
 
     @discardableResult
-    func send(_ text: String, to threadID: String, localImagePath: String? = nil) async -> AgentTurn? {
+    func send(
+        _ text: String,
+        to threadID: String,
+        localImagePath: String? = nil,
+        fallbackOptions: AgentThreadStartOptions = AgentThreadStartOptions()
+    ) async -> AgentSentTurn? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        agentMessages[threadID] = ""
+
         do {
+            let readyThreadID = try await ensureThreadIsLoaded(
+                id: threadID,
+                fallbackOptions: fallbackOptions
+            )
+            agentMessages[readyThreadID] = ""
             let turn = try await runtime.startTurn(
-                threadID: threadID,
+                threadID: readyThreadID,
                 text: trimmed,
                 localImagePath: localImagePath
             )
             lastError = nil
-            activeTurns[threadID] = turn
-            return turn
+            activeTurns[readyThreadID] = turn
+            return AgentSentTurn(threadID: readyThreadID, turn: turn)
         } catch {
+            if let bridgeError = error as? CodexBridgeError, bridgeError.isMissingThread {
+                loadedThreadIDs.remove(threadID)
+                removeThread(threadID)
+                do {
+                    let replacement = try await startReplacementThread(options: fallbackOptions)
+                    agentMessages[replacement.id] = ""
+                    let turn = try await runtime.startTurn(
+                        threadID: replacement.id,
+                        text: trimmed,
+                        localImagePath: localImagePath
+                    )
+                    lastError = nil
+                    activeTurns[replacement.id] = turn
+                    return AgentSentTurn(threadID: replacement.id, turn: turn)
+                } catch {
+                    record(error)
+                    return nil
+                }
+            }
             record(error)
             return nil
         }
@@ -251,6 +300,7 @@ final class AgentStore: ObservableObject {
             unknownMessageCount += 1
 
         case let .processExited(status, expected, stderrTail):
+            loadedThreadIDs.removeAll()
             guard !expected else { return }
             recordMessage("Codex app-server exited with status \(status). \(stderrTail)")
         }
@@ -265,10 +315,46 @@ final class AgentStore: ObservableObject {
     }
 
     private func removeThread(_ id: String) {
+        loadedThreadIDs.remove(id)
         threads.removeAll { $0.id == id }
         if selectedThreadID == id {
             selectedThreadID = threads.first?.id
         }
+    }
+
+    private func ensureThreadIsLoaded(
+        id: String,
+        fallbackOptions: AgentThreadStartOptions
+    ) async throws -> String {
+        if loadedThreadIDs.contains(id) {
+            return id
+        }
+
+        do {
+            let cwd = threads.first(where: { $0.id == id })?.cwd ?? fallbackOptions.cwd
+            let thread = try await runtime.resumeThread(id: id, cwd: cwd)
+            upsert(thread)
+            loadedThreadIDs.insert(thread.id)
+            selectedThreadID = thread.id
+            lastError = nil
+            return thread.id
+        } catch {
+            guard let bridgeError = error as? CodexBridgeError, bridgeError.isMissingThread else {
+                throw error
+            }
+            loadedThreadIDs.remove(id)
+            removeThread(id)
+            return try await startReplacementThread(options: fallbackOptions).id
+        }
+    }
+
+    private func startReplacementThread(options: AgentThreadStartOptions) async throws -> AgentThread {
+        let thread = try await runtime.startThread(options)
+        upsert(thread)
+        loadedThreadIDs.insert(thread.id)
+        selectedThreadID = thread.id
+        lastError = nil
+        return thread
     }
 
     private func record(_ error: Error) {

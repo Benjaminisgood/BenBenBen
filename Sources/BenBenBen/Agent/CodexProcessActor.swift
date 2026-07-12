@@ -14,6 +14,7 @@ actor CodexProcessActor: AgentRuntime {
 
     private let clientInfo: CodexClientInfo
     private let requestTimeout: Duration
+    private let appServerConfigOverrides: [String]
     private let events: AsyncStream<AgentEvent>
     private let eventContinuation: AsyncStream<AgentEvent>.Continuation
     private let encoder = JSONEncoder()
@@ -36,11 +37,13 @@ actor CodexProcessActor: AgentRuntime {
     init(
         installation: CodexInstallation,
         clientInfo: CodexClientInfo = CodexClientInfo(),
-        requestTimeout: Duration = .seconds(30)
+        requestTimeout: Duration = .seconds(30),
+        appServerConfigOverrides: [String] = []
     ) {
         self.installation = installation
         self.clientInfo = clientInfo
         self.requestTimeout = requestTimeout
+        self.appServerConfigOverrides = appServerConfigOverrides
         let stream = AsyncStream<AgentEvent>.makeStream(bufferingPolicy: .bufferingNewest(1_024))
         events = stream.stream
         eventContinuation = stream.continuation
@@ -68,7 +71,8 @@ actor CodexProcessActor: AgentRuntime {
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         child.executableURL = installation.executableURL
-        child.arguments = ["app-server", "--stdio"]
+        child.arguments = appServerConfigOverrides.flatMap { ["-c", $0] }
+            + ["app-server", "--stdio"]
         child.standardInput = stdinPipe
         child.standardOutput = stdoutPipe
         child.standardError = stderrPipe

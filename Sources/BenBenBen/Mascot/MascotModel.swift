@@ -49,7 +49,7 @@ final class MascotModel: ObservableObject {
         voiceOverride = listening
         transientTask?.cancel()
         if listening {
-            applyBusinessState(.listening, bubble: "我在听，松开就发送")
+            applyBusinessState(.listening, bubble: "我在听，停顿后就会发送")
         } else if state == .listening {
             applyBusinessState(.thinking, bubble: "正在听写…")
             synchronizeLatestAgentState()

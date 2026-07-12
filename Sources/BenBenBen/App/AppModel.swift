@@ -75,6 +75,8 @@ final class AppModel: ObservableObject {
     private var agentBootstrapTask: Task<Void, Never>?
     private var voiceReplyThreadID: String?
     private var archivedAgentTurnIDs = Set<String>()
+    private var proactiveAgentTurnIDs = Set<String>()
+    private var artifactBaselines: [String: AgentArtifactSnapshot] = [:]
     private var agentCancellables = Set<AnyCancellable>()
     private lazy var artifactWindowController = AgentArtifactWindowController(
         agentContext: agentContext,
@@ -107,8 +109,10 @@ final class AppModel: ObservableObject {
         runtimeCatalog = RuntimeCatalogStore()
         loginItemStore = LoginItemStore()
 
-        voiceInteraction.onStateChanged = { [weak mascotModel] listening in
-            mascotModel?.setListening(listening)
+        voiceInteraction.onStateChanged = { [weak mascotModel, weak voiceInteraction] listening in
+            // Continuous listening is ambient infrastructure. Keep operational
+            // Codex states visible instead of pinning the dragon in "listening".
+            mascotModel?.setListening(listening && voiceInteraction?.isConversationEnabled != true)
         }
         voiceInteraction.onCountdownChanged = { [weak mascotModel] text, seconds in
             mascotModel?.showVoiceCountdown(text: text, seconds: seconds)
@@ -131,6 +135,7 @@ final class AppModel: ObservableObject {
         if screenContext.isEnabled {
             screenContext.start()
         }
+        voiceInteraction.activatePersistentListeningIfNeeded()
         Task {
             await personalWorkspace.refresh()
         }
@@ -194,7 +199,9 @@ final class AppModel: ObservableObject {
             notchController.updateAgentStore(store)
             mascotModel.bind(to: store)
             observeVoiceReplyCompletion(in: store)
-            await store.connect()
+            await store.connect(
+                threadQuery: AgentThreadListQuery(cwd: [personalWorkspace.registry.root.path])
+            )
         } catch {
             mascotModel.showError(error.localizedDescription)
         }
@@ -204,7 +211,8 @@ final class AppModel: ObservableObject {
         _ prompt: String,
         voiceInitiated: Bool = false,
         focusedFile: URL? = nil,
-        screenImageURL: URL? = nil
+        screenImageURL: URL? = nil,
+        proactive: Bool = false
     ) {
         Task {
             if agentStore == nil {
@@ -219,10 +227,10 @@ final class AppModel: ObservableObject {
             }
             guard let threadID else { return }
 
-            store.selectedThreadID = threadID
-            if voiceInitiated {
-                voiceReplyThreadID = threadID
-            }
+            let fallbackOptions = AgentThreadStartOptions(cwd: personalWorkspace.registry.root.path)
+            let artifactBaseline = await Task.detached(priority: .utility) {
+                AgentArtifactSnapshot.capture()
+            }.value
             let screenshotURL: URL?
             if let screenImageURL {
                 screenshotURL = screenImageURL
@@ -234,12 +242,22 @@ final class AppModel: ObservableObject {
                 focusedFile: focusedFile,
                 includesScreen: screenshotURL != nil
             )
-            if await store.send(
+            if let sent = await store.send(
                 governedPrompt,
                 to: threadID,
-                localImagePath: screenshotURL?.path
-            ) != nil {
-                agentConversation[threadID, default: []].append(
+                localImagePath: screenshotURL?.path,
+                fallbackOptions: fallbackOptions
+            ) {
+                store.selectedThreadID = sent.threadID
+                let turnKey = Self.turnKey(threadID: sent.threadID, turnID: sent.turn.id)
+                artifactBaselines[turnKey] = artifactBaseline
+                if proactive {
+                    proactiveAgentTurnIDs.insert(turnKey)
+                }
+                if voiceInitiated {
+                    voiceReplyThreadID = sent.threadID
+                }
+                agentConversation[sent.threadID, default: []].append(
                     AgentConversationEntry(role: .user, text: prompt)
                 )
             }
@@ -277,7 +295,8 @@ final class AppModel: ObservableObject {
         }
         sendQuickPrompt(
             "主动观察我当前屏幕。如果有明显错误、阻塞、可继续的工作或值得提醒的内容，请简短回应；否则只回复“继续陪伴”。不要未经确认执行风险动作。",
-            screenImageURL: screenshotURL
+            screenImageURL: screenshotURL,
+            proactive: true
         )
     }
 
@@ -289,16 +308,47 @@ final class AppModel: ObservableObject {
             .sink { [weak self] turns, messages in
                 guard let self else { return }
                 for (threadID, turn) in turns where Self.isCompleted(turn.status) {
-                    let turnKey = "\(threadID):\(turn.id)"
+                    let turnKey = Self.turnKey(threadID: threadID, turnID: turn.id)
                     guard !self.archivedAgentTurnIDs.contains(turnKey),
                           let message = messages[threadID], !message.isEmpty else { continue }
                     self.archivedAgentTurnIDs.insert(turnKey)
-                    self.agentConversation[threadID, default: []].append(
-                        AgentConversationEntry(role: .assistant, text: message)
-                    )
-                    if self.voiceReplyThreadID == threadID {
+                    let visibleMessage = Self.visibleAgentMessage(message)
+                    let isProactive = self.proactiveAgentTurnIDs.remove(turnKey) != nil
+                    let shouldSurface = !isProactive || !Self.isPassiveScreenReply(visibleMessage)
+
+                    if shouldSurface, !visibleMessage.isEmpty {
+                        self.agentConversation[threadID, default: []].append(
+                            AgentConversationEntry(role: .assistant, text: visibleMessage)
+                        )
+                    }
+                    if shouldSurface,
+                       self.voiceInteraction.speaksVoiceReplies,
+                       (self.voiceReplyThreadID == threadID
+                            || self.voiceInteraction.isConversationEnabled) {
                         self.voiceReplyThreadID = nil
-                        self.voiceInteraction.speakVoiceInitiatedReply(message)
+                        self.voiceInteraction.speakVoiceInitiatedReply(visibleMessage)
+                    }
+                    if isProactive, shouldSurface {
+                        self.showNotch()
+                    }
+
+                    let baseline = self.artifactBaselines.removeValue(forKey: turnKey)
+                    let handedOffURLs = Self.artifactURLs(in: message)
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        let current = await Task.detached(priority: .utility) {
+                            AgentArtifactSnapshot.capture()
+                        }.value
+                        var artifacts = baseline.map { current.changes(since: $0) } ?? []
+                        for url in handedOffURLs {
+                            guard let kind = AgentArtifactKind.kind(containing: url) else { continue }
+                            let artifact = AgentArtifact(kind: kind, url: url, modifiedAt: Date())
+                            if !artifacts.contains(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) {
+                                artifacts.append(artifact)
+                            }
+                        }
+                        guard !artifacts.isEmpty else { return }
+                        await self.artifactWindowController.reveal(artifacts)
                     }
                 }
             }
@@ -313,5 +363,39 @@ final class AppModel: ObservableObject {
     private static func isRunning(_ status: String) -> Bool {
         let value = status.lowercased()
         return value.contains("progress") || value == "running" || value == "started"
+    }
+
+    private static func turnKey(threadID: String, turnID: String) -> String {
+        "\(threadID):\(turnID)"
+    }
+
+    private static func visibleAgentMessage(_ raw: String) -> String {
+        raw.replacingOccurrences(
+            of: #"(?m)^BENBENBEN_ARTIFACT:\s*.*$"#,
+            with: "",
+            options: .regularExpression
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func artifactURLs(in raw: String) -> [URL] {
+        raw.split(whereSeparator: \Character.isNewline).compactMap { line in
+            let prefix = "BENBENBEN_ARTIFACT:"
+            let value = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard value.hasPrefix(prefix) else { return nil }
+            let path = value.dropFirst(prefix.count)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard path.hasPrefix("/") else { return nil }
+            let url = URL(fileURLWithPath: path).standardizedFileURL
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            return url
+        }
+    }
+
+    private static func isPassiveScreenReply(_ message: String) -> Bool {
+        let normalized = message
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "。", with: "")
+        return normalized == "继续陪伴"
     }
 }

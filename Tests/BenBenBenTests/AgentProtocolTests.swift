@@ -182,6 +182,30 @@ final class AgentProtocolTests: XCTestCase {
         await runtime.stop()
     }
 
+    @MainActor
+    func testAgentStoreReplacesAThreadThatCannotBeResumed() async throws {
+        let fixture = try TemporaryCodexAppServer(mode: "missingThread")
+        defer { fixture.remove() }
+        let installation = try await CodexExecutableDetector.probe(fixture.executableURL)
+        let runtime = CodexProcessActor(installation: installation, requestTimeout: .seconds(3))
+        let store = AgentStore(runtime: runtime)
+
+        await store.connect(threadQuery: AgentThreadListQuery(limit: 25, cwd: ["/tmp/project"]))
+        let sent = await store.send(
+            "Build an HTML exercise",
+            to: "missing-thread",
+            fallbackOptions: AgentThreadStartOptions(cwd: "/tmp/project")
+        )
+
+        XCTAssertEqual(sent?.threadID, "thread-new")
+        XCTAssertEqual(sent?.turn.id, "turn-new")
+        XCTAssertEqual(store.selectedThreadID, "thread-new")
+        let trace = fixture.trace.replacingOccurrences(of: "\\/", with: "/")
+        XCTAssertTrue(trace.contains("thread/resume"))
+        XCTAssertTrue(trace.contains("thread/start"))
+        await runtime.stop()
+    }
+
     func testInstalledStableSchemaStillContainsBridgeSurface() async throws {
         let installation: CodexInstallation
         do {
@@ -424,7 +448,10 @@ for line in sys.stdin:
         assert params["approvalsReviewer"] == "user"
         emit({"id": request_id, "result": {"thread": thread("thread-new")}})
     elif method == "thread/resume":
-        emit({"id": request_id, "result": {"thread": thread(params["threadId"])}})
+        if MODE == "missingThread" and params["threadId"] == "missing-thread":
+            emit({"id": request_id, "error": {"code": -32600, "message": "thread not found: missing-thread"}})
+        else:
+            emit({"id": request_id, "result": {"thread": thread(params["threadId"])}})
     elif method == "thread/archive":
         emit({"id": request_id, "result": {}})
     elif method == "turn/start":

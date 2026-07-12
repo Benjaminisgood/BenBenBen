@@ -477,6 +477,13 @@ final class NotchPanelController: NSObject {
         voiceHoldTask?.cancel()
         didStartVoiceHold = false
 
+        // Persistent conversation already owns the microphone. In that mode a
+        // press remains a normal click so the compact dragon is always usable.
+        if voiceInteraction.isConversationEnabled {
+            suppressNextHotClick = false
+            return
+        }
+
         if voiceInteraction.pendingTranscript != nil {
             suppressNextHotClick = true
             voiceInteraction.cancelPending()

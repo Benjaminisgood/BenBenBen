@@ -99,7 +99,7 @@ struct NotchCompanionView: View {
 
     private var dragonBehindNotch: some View {
         Button {
-            guard !voiceInteraction.isRecording,
+            guard (!voiceInteraction.isRecording || voiceInteraction.isConversationEnabled),
                   voiceInteraction.pendingTranscript == nil else { return }
             onExpand()
         } label: {
@@ -190,11 +190,11 @@ struct NotchCompanionView: View {
     private var composerBar: some View {
         HStack(spacing: 8) {
             Button(action: toggleVoice) {
-                Image(systemName: voiceInteraction.isRecording ? "phone.down.fill" : "phone.fill")
+                Image(systemName: voiceInteraction.isConversationEnabled ? "phone.down.fill" : "phone.fill")
             }
             .buttonStyle(.glassProminent)
-            .tint(voiceInteraction.isRecording ? .red : .green)
-            .help(voiceInteraction.isRecording ? "结束通话并发送" : "和 Ben龙 说话")
+            .tint(voiceInteraction.isConversationEnabled ? .red : .green)
+            .help(voiceInteraction.isConversationEnabled ? "关闭持续语音" : "开启持续语音")
 
             TextField("直接和 Ben龙 说，或输入要共同完成的事…", text: $composer, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -255,8 +255,8 @@ struct NotchCompanionView: View {
     }
 
     private var replyText: String {
-        if voiceInteraction.isRecording {
-            return voiceInteraction.liveTranscript.isEmpty ? "我在听…" : voiceInteraction.liveTranscript
+        if voiceInteraction.isRecording, !voiceInteraction.liveTranscript.isEmpty {
+            return voiceInteraction.liveTranscript
         }
         if let bubble = mascotModel.bubbleText, !bubble.isEmpty { return bubble }
         guard let agentStore = agentContext.store else { return "我正在连接 Codex…" }
@@ -276,11 +276,7 @@ struct NotchCompanionView: View {
     }
 
     private func toggleVoice() {
-        if voiceInteraction.isRecording {
-            voiceInteraction.stopRecording()
-        } else {
-            Task { await voiceInteraction.startRecording() }
-        }
+        voiceInteraction.toggleConversation()
     }
 }
 

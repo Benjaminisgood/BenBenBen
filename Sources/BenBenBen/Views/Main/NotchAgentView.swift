@@ -753,11 +753,11 @@ private struct NotchAgentComposer: View {
                 Button {
                     toggleVoice()
                 } label: {
-                    Image(systemName: voiceInteraction.isRecording ? "stop.circle.fill" : "mic")
+                    Image(systemName: voiceInteraction.isConversationEnabled ? "stop.circle.fill" : "mic")
                 }
                 .buttonStyle(.glass)
-                .foregroundStyle(voiceInteraction.isRecording ? Color.red : Color.primary)
-                .help(voiceInteraction.isRecording ? "停止录音" : "语音输入")
+                .foregroundStyle(voiceInteraction.isConversationEnabled ? Color.red : Color.primary)
+                .help(voiceInteraction.isConversationEnabled ? "关闭持续语音" : "开启持续语音")
 
                 if let selectedThreadID = store.selectedThreadID,
                    let turn = store.activeTurns[selectedThreadID],
@@ -787,6 +787,9 @@ private struct NotchAgentComposer: View {
         if voiceInteraction.isRecording {
             Text(voiceInteraction.liveTranscript.isEmpty ? "正在听…" : voiceInteraction.liveTranscript)
                 .foregroundStyle(.red)
+        } else if voiceInteraction.isConversationEnabled, voiceInteraction.isSpeaking {
+            Text("Ben龙 正在说话…")
+                .foregroundStyle(.green)
         } else if let error = voiceInteraction.lastError {
             Text(error)
                 .foregroundStyle(.red)
@@ -808,13 +811,7 @@ private struct NotchAgentComposer: View {
     }
 
     private func toggleVoice() {
-        if voiceInteraction.isRecording {
-            voiceInteraction.stopRecording()
-        } else {
-            Task {
-                await voiceInteraction.startRecording()
-            }
-        }
+        voiceInteraction.toggleConversation()
     }
 }
 
@@ -831,7 +828,7 @@ private struct NotchOfflineAgentComposer: View {
                 .onSubmit(submit)
 
             HStack(spacing: 8) {
-                Text(voiceInteraction.isRecording ? "正在听…" : "连接完成后会自动继续")
+                Text(voiceInteraction.isRecording ? "持续聆听中…" : "连接完成后会自动继续")
                     .font(.caption2)
                     .foregroundStyle(voiceInteraction.isRecording ? Color.red : Color.secondary)
                     .lineLimit(1)
@@ -853,7 +850,7 @@ private struct NotchOfflineAgentComposer: View {
                 Button {
                     toggleVoice()
                 } label: {
-                    Image(systemName: voiceInteraction.isRecording ? "stop.circle.fill" : "mic")
+                    Image(systemName: voiceInteraction.isConversationEnabled ? "stop.circle.fill" : "mic")
                 }
                 .buttonStyle(.glass)
 
@@ -880,13 +877,7 @@ private struct NotchOfflineAgentComposer: View {
     }
 
     private func toggleVoice() {
-        if voiceInteraction.isRecording {
-            voiceInteraction.stopRecording()
-        } else {
-            Task {
-                await voiceInteraction.startRecording()
-            }
-        }
+        voiceInteraction.toggleConversation()
     }
 }
 

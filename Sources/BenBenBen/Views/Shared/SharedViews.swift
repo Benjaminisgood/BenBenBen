@@ -464,12 +464,16 @@ struct CompactNotchView: View {
 
     private var statusText: String {
         if voiceInteraction.isRecording {
-            return voiceInteraction.liveTranscript.isEmpty ? "按住说话，松开发送" : voiceInteraction.liveTranscript
+            if !voiceInteraction.liveTranscript.isEmpty {
+                return voiceInteraction.liveTranscript
+            }
+            return voiceInteraction.isConversationEnabled ? "持续聆听中" : "按住说话，松开发送"
         }
         if let pending = voiceInteraction.pendingTranscript {
             return "点击取消：\(pending)"
         }
-        return mascotModel.bubbleText ?? "单击展开 · 按住说话"
+        return mascotModel.bubbleText
+            ?? (voiceInteraction.isConversationEnabled ? "单击展开 · 语音常驻" : "单击展开 · 按住说话")
     }
 }
 
