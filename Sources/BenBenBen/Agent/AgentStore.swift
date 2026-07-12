@@ -33,6 +33,10 @@ final class AgentStore: ObservableObject {
 
     static func live(preferredCodexPath: String? = nil) async throws -> AgentStore {
         let installation = try await CodexExecutableDetector.detect(preferredPath: preferredCodexPath)
+        UserDefaults.standard.set(
+            installation.executableURL.path,
+            forKey: "benbenben.codexExecutable"
+        )
         var overrides: [String] = []
         let helper = WorkspacePaths.mcpHelper
         if FileManager.default.isExecutableFile(atPath: helper.path) {

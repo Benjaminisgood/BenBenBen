@@ -7,7 +7,7 @@ struct BenBenBenSettingsView: View {
     @ObservedObject var loginItemStore: LoginItemStore
     @EnvironmentObject private var model: AppModel
 
-    @AppStorage("benbenben.codexExecutable") private var codexExecutable = "/opt/homebrew/bin/codex"
+    @AppStorage("benbenben.codexExecutable") private var codexExecutable = ""
 
     var body: some View {
         TabView {
@@ -38,7 +38,7 @@ struct BenBenBenSettingsView: View {
             .tabItem { Label("General", systemImage: "gearshape") }
 
             Form {
-                TextField("Codex executable", text: $codexExecutable)
+                TextField("Codex executable (newest available is selected)", text: $codexExecutable)
                 LabeledContent("Default workspace", value: "~/keyoti")
                 LabeledContent("Approval policy", value: "On request")
                 LabeledContent("Sandbox", value: "Workspace write")

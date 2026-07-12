@@ -3,8 +3,8 @@ import Foundation
 enum CodexProtocolBaseline {
     /// Stable schema generated with:
     /// `codex app-server generate-json-schema --out DIR`
-    /// on 2026-07-11. Experimental fields were intentionally excluded.
-    static let codexVersion = "0.142.4"
+    /// on 2026-07-12. Experimental fields were intentionally excluded.
+    static let codexVersion = "0.144.0-alpha.4"
     static let experimentalAPI = false
 }
 

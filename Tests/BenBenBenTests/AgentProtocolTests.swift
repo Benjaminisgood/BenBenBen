@@ -37,6 +37,13 @@ final class AgentProtocolTests: XCTestCase {
         XCTAssertEqual(roundTripped, envelope)
     }
 
+    func testCodexVersionSelectionPrefersNewerBuilds() {
+        XCTAssertTrue(CodexExecutableDetector.isVersion("0.144.0-alpha.4", newerThan: "0.142.4"))
+        XCTAssertTrue(CodexExecutableDetector.isVersion("0.144.0", newerThan: "0.144.0-alpha.4"))
+        XCTAssertTrue(CodexExecutableDetector.isVersion("0.144.0-alpha.10", newerThan: "0.144.0-alpha.4"))
+        XCTAssertFalse(CodexExecutableDetector.isVersion("0.142.5", newerThan: "0.144.0-alpha.4"))
+    }
+
     func testExecutableDetectorAndFullJSONLContractAgainstFakeServer() async throws {
         let fixture = try TemporaryCodexAppServer()
         defer { fixture.remove() }

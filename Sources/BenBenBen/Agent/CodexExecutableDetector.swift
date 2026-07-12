@@ -6,19 +6,19 @@ enum CodexExecutableDetector {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async throws -> CodexInstallation {
         let candidates = candidateURLs(preferredPath: preferredPath, environment: environment)
-
-        if let preferredPath, !preferredPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard let candidate = candidates.first else {
-                throw CodexBridgeError.executableNotRunnable(preferredPath)
-            }
-            return try await probe(candidate)
-        }
-
+        var best: CodexInstallation?
         for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate.path) {
             if let installation = try? await probe(candidate) {
-                return installation
+                if let current = best {
+                    if isVersion(installation.version, newerThan: current.version) {
+                        best = installation
+                    }
+                } else {
+                    best = installation
+                }
             }
         }
+        if let best { return best }
         throw CodexBridgeError.executableNotFound
     }
 
@@ -45,16 +45,32 @@ enum CodexExecutableDetector {
         return String(output[versionRange])
     }
 
+    static func isVersion(_ candidate: String, newerThan current: String) -> Bool {
+        let lhs = parsedVersion(candidate)
+        let rhs = parsedVersion(current)
+        for index in 0..<max(lhs.numbers.count, rhs.numbers.count) {
+            let left = index < lhs.numbers.count ? lhs.numbers[index] : 0
+            let right = index < rhs.numbers.count ? rhs.numbers[index] : 0
+            if left != right { return left > right }
+        }
+        switch (lhs.prerelease, rhs.prerelease) {
+        case (nil, .some): return true
+        case (.some, nil): return false
+        case let (.some(left), .some(right)):
+            return left.localizedStandardCompare(right) == .orderedDescending
+        case (nil, nil): return false
+        }
+    }
+
     private static func candidateURLs(
         preferredPath: String?,
         environment: [String: String]
     ) -> [URL] {
-        if let preferredPath, !preferredPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return [URL(fileURLWithPath: (preferredPath as NSString).expandingTildeInPath)]
-        }
-
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         var paths: [String] = []
+        if let preferredPath, !preferredPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            paths.append(preferredPath)
+        }
         if let configured = environment["CODEX_EXECUTABLE"], !configured.isEmpty {
             paths.append(configured)
         }
@@ -65,12 +81,28 @@ enum CodexExecutableDetector {
             paths.append(contentsOf: path.split(separator: ":").map { "\($0)/codex" })
         }
         paths.append(contentsOf: [
+            "/Applications/ChatGPT.app/Contents/Resources/codex",
+            "/Applications/Codex.app/Contents/Resources/codex",
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
             "\(home)/.local/bin/codex",
             "/Applications/Codex.app/Contents/Resources/codex",
             "\(home)/Applications/Codex.app/Contents/Resources/codex"
         ])
+
+        let extensionsRoot = URL(fileURLWithPath: home)
+            .appendingPathComponent(".vscode/extensions", isDirectory: true)
+        if let extensions = try? FileManager.default.contentsOfDirectory(
+            at: extensionsRoot,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) {
+            for extensionURL in extensions
+            where extensionURL.lastPathComponent.hasPrefix("openai.chatgpt-") {
+                paths.append(extensionURL.appendingPathComponent("bin/macos-aarch64/codex").path)
+                paths.append(extensionURL.appendingPathComponent("bin/macos-x86_64/codex").path)
+            }
+        }
 
         var seen: Set<String> = []
         return paths.compactMap { rawPath in
@@ -79,6 +111,13 @@ enum CodexExecutableDetector {
             guard seen.insert(url.path).inserted else { return nil }
             return url
         }
+    }
+
+    private static func parsedVersion(_ raw: String) -> (numbers: [Int], prerelease: String?) {
+        let parts = raw.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+        let numbers = parts[0].split(separator: ".").map { Int($0) ?? 0 }
+        let prerelease = parts.count > 1 ? String(parts[1]) : nil
+        return (numbers, prerelease)
     }
 
     private static func probeSynchronously(_ executableURL: URL) throws -> CodexInstallation {

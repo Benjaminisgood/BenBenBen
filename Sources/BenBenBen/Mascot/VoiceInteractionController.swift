@@ -35,7 +35,7 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
     private var recordingMode: RecordingMode?
     private var resumeListeningAfterSpeech = false
 
-    private enum RecordingMode {
+    private enum RecordingMode: Sendable {
         case oneShot
         case continuous
     }
@@ -119,37 +119,13 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
         }
         recognitionRequest = request
 
-        recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
-            Task { @MainActor in
-                guard let self else { return }
-                guard self.recognitionGeneration == generation else { return }
-                if let result {
-                    self.liveTranscript = result.bestTranscription.formattedString
-                    if mode == .continuous, !self.liveTranscript.isEmpty {
-                        self.scheduleSilenceCommit(generation: generation)
-                    }
-                    if mode == .continuous, result.isFinal {
-                        self.commitContinuousUtterance(generation: generation)
-                        return
-                    }
-                }
-                if let error, self.isRecording {
-                    let partial = self.liveTranscript
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    self.finishAudioCapture()
-                    self.liveTranscript = ""
-                    self.onStateChanged?(false)
-                    if mode == .continuous, self.isConversationEnabled {
-                        if !partial.isEmpty {
-                            self.onSend?(partial)
-                        }
-                        self.scheduleContinuousRestart()
-                    } else {
-                        self.fail(error.localizedDescription)
-                    }
-                }
-            }
-        }
+        recognitionTask = Self.beginRecognitionTask(
+            recognizer: speechRecognizer,
+            request: request,
+            owner: self,
+            generation: generation,
+            mode: mode
+        )
 
         let inputNode = audioEngine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
@@ -158,9 +134,7 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
             return
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in
-            request.append(buffer)
-        }
+        Self.installAudioTap(on: inputNode, format: format, request: request)
         inputTapInstalled = true
 
         do {
@@ -272,6 +246,40 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
         }
     }
 
+    private func handleRecognitionResult(
+        transcript: String?,
+        isFinal: Bool,
+        errorMessage: String?,
+        generation: UUID,
+        mode: RecordingMode
+    ) {
+        guard recognitionGeneration == generation else { return }
+        if let transcript {
+            liveTranscript = transcript
+            if mode == .continuous, !liveTranscript.isEmpty {
+                scheduleSilenceCommit(generation: generation)
+            }
+            if mode == .continuous, isFinal {
+                commitContinuousUtterance(generation: generation)
+                return
+            }
+        }
+        if let errorMessage, isRecording {
+            let partial = liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            finishAudioCapture()
+            liveTranscript = ""
+            onStateChanged?(false)
+            if mode == .continuous, isConversationEnabled {
+                if !partial.isEmpty {
+                    onSend?(partial)
+                }
+                scheduleContinuousRestart()
+            } else {
+                fail(errorMessage)
+            }
+        }
+    }
+
     private func commitContinuousUtterance(generation: UUID) {
         guard recognitionGeneration == generation,
               recordingMode == .continuous,
@@ -333,11 +341,7 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
         case .authorized:
             speechAuthorized = true
         case .notDetermined:
-            speechAuthorized = await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { status in
-                    continuation.resume(returning: status == .authorized)
-                }
-            }
+            speechAuthorized = await Self.requestSpeechRecognitionAuthorization()
         default:
             speechAuthorized = false
         }
@@ -351,7 +355,7 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
         case .authorized:
             microphoneAuthorized = true
         case .notDetermined:
-            microphoneAuthorized = await AVCaptureDevice.requestAccess(for: .audio)
+            microphoneAuthorized = await Self.requestMicrophoneAuthorization()
         default:
             microphoneAuthorized = false
         }
@@ -360,6 +364,60 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
             return false
         }
         return true
+    }
+
+    /// TCC invokes these completion handlers on private worker queues. Keeping
+    /// the bridges nonisolated prevents Swift 6 from attaching MainActor
+    /// preconditions to callbacks that the framework does not deliver on main.
+    private nonisolated static func requestSpeechRecognitionAuthorization() async -> Bool {
+        await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status == .authorized)
+            }
+        }
+    }
+
+    private nonisolated static func requestMicrophoneAuthorization() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+
+    private nonisolated static func beginRecognitionTask(
+        recognizer: SFSpeechRecognizer,
+        request: SFSpeechAudioBufferRecognitionRequest,
+        owner: VoiceInteractionController,
+        generation: UUID,
+        mode: RecordingMode
+    ) -> SFSpeechRecognitionTask {
+        recognizer.recognitionTask(with: request) { [weak owner] result, error in
+            // Copy framework objects into immutable Sendable values before
+            // crossing back to MainActor.
+            let transcript = result?.bestTranscription.formattedString
+            let isFinal = result?.isFinal ?? false
+            let errorMessage = error?.localizedDescription
+            Task { @MainActor [weak owner] in
+                owner?.handleRecognitionResult(
+                    transcript: transcript,
+                    isFinal: isFinal,
+                    errorMessage: errorMessage,
+                    generation: generation,
+                    mode: mode
+                )
+            }
+        }
+    }
+
+    private nonisolated static func installAudioTap(
+        on inputNode: AVAudioInputNode,
+        format: AVAudioFormat,
+        request: SFSpeechAudioBufferRecognitionRequest
+    ) {
+        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in
+            request.append(buffer)
+        }
     }
 
     private func fail(_ message: String) {
