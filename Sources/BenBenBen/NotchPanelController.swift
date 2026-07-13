@@ -73,9 +73,22 @@ struct DragonVoicePressArbitrator {
 @MainActor
 final class NotchPanel: NSPanel {
     var onMouseEvent: ((NSEvent) -> Void)?
+    var lockedContentSize: NSSize?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func setContentSize(_ size: NSSize) {
+        super.setContentSize(lockedContentSize ?? size)
+    }
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        var lockedFrame = frameRect
+        if let lockedContentSize {
+            lockedFrame.size = lockedContentSize
+        }
+        super.setFrame(lockedFrame, display: flag)
+    }
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown || event.type == .leftMouseUp {
@@ -163,7 +176,7 @@ final class NotchPanelController: NSObject {
         if cachedLayout != layout {
             rebuildContent(layout: layout)
         }
-        panel.setFrame(panelFrame(for: layout), display: true)
+        applyFixedLayout(layout)
         if activate {
             NSApp.activate(ignoringOtherApps: true)
             panel.makeKeyAndOrderFront(nil)
@@ -199,6 +212,7 @@ final class NotchPanelController: NSObject {
 
         if let hostingView {
             hostingView.rootView = view
+            hostingView.frame = NSRect(origin: .zero, size: layout.panelSize)
             return
         }
 
@@ -208,6 +222,7 @@ final class NotchPanelController: NSObject {
         host.autoresizingMask = [.width, .height]
         host.wantsLayer = true
         host.layer?.masksToBounds = true
+        host.frame = NSRect(origin: .zero, size: layout.panelSize)
         panel.contentView = host
         hostingView = host
     }
@@ -317,14 +332,32 @@ final class NotchPanelController: NSObject {
     @objc private func screenParametersChanged(_ notification: Notification) {
         let layout = currentLayout()
         rebuildContent(layout: layout)
-        panel.setFrame(panelFrame(for: layout), display: true)
+        applyFixedLayout(layout)
     }
 
     private func preferencesChanged() {
         let layout = currentLayout()
         rebuildContent(layout: layout)
-        panel.setFrame(panelFrame(for: layout), display: true)
+        applyFixedLayout(layout)
         panel.orderFrontRegardless()
+    }
+
+    /// SwiftUI task bubbles have a larger ideal size than the notch surface.
+    /// Lock every AppKit sizing path so state changes can only redraw content.
+    private func applyFixedLayout(_ layout: NotchLayout) {
+        let size = layout.panelSize
+        let unconstrained = NSSize(width: 10_000, height: 10_000)
+        panel.minSize = .zero
+        panel.maxSize = unconstrained
+        panel.contentMinSize = .zero
+        panel.contentMaxSize = unconstrained
+        panel.lockedContentSize = size
+        hostingView?.frame = NSRect(origin: .zero, size: size)
+        panel.setFrame(panelFrame(for: layout), display: true)
+        panel.contentMinSize = size
+        panel.contentMaxSize = size
+        panel.minSize = size
+        panel.maxSize = size
     }
 
     private func currentLayout() -> NotchLayout {

@@ -5,25 +5,17 @@ struct DragonTaskThoughtCloud: View {
     let threads: [AgentThread]
     @ObservedObject var store: AgentStore
     let selectedThreadID: String?
-    let isDetailVisible: Bool
     let onSelect: (String) -> Void
 
     var body: some View {
-        ZStack {
-            ForEach(Array(orderedThreads.prefix(4).enumerated()), id: \.element.id) { index, thread in
-                let isPrimary = index == 0
+        Group {
+            if let thread = orderedThreads.first {
                 Button {
                     onSelect(thread.id)
                 } label: {
-                    TaskThoughtBubble(
-                        title: taskTitle(thread),
-                        isPrimary: isPrimary,
-                        phase: index
-                    )
+                    TaskThoughtBubble()
                 }
                 .buttonStyle(.plain)
-                .position(position(for: index))
-                .zIndex(Double(10 - index))
                 .contextMenu {
                     ForEach(AgentTaskExecutionMode.allCases) { mode in
                         Button {
@@ -40,17 +32,8 @@ struct DragonTaskThoughtCloud: View {
                 .accessibilityLabel("正在思考：\(taskTitle(thread))")
                 .accessibilityHint("点击切换到这个任务并查看进展")
             }
-
-            if orderedThreads.count > 4 {
-                Text("+\(orderedThreads.count - 4)")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.cyan)
-                    .padding(7)
-                    .background(.ultraThinMaterial, in: .circle)
-                    .position(x: 262, y: 154)
-            }
         }
-        .frame(width: 300, height: 178)
+        .frame(width: 52, height: 54)
         .animation(.snappy(duration: 0.32), value: selectedThreadID)
         .animation(.snappy(duration: 0.32), value: threads.map(\.id))
     }
@@ -61,23 +44,6 @@ struct DragonTaskThoughtCloud: View {
             return threads
         }
         return [selected] + threads.filter { $0.id != selectedThreadID }
-    }
-
-    private func position(for index: Int) -> CGPoint {
-        if isDetailVisible {
-            switch index {
-            case 0: return CGPoint(x: 150, y: 42)
-            case 1: return CGPoint(x: 238, y: 92)
-            case 2: return CGPoint(x: 226, y: 139)
-            default: return CGPoint(x: 70, y: 118)
-            }
-        }
-        switch index {
-        case 0: return CGPoint(x: 144, y: 40)
-        case 1: return CGPoint(x: 244, y: 91)
-        case 2: return CGPoint(x: 226, y: 142)
-        default: return CGPoint(x: 63, y: 117)
-        }
     }
 
     private func taskTitle(_ thread: AgentThread) -> String {
@@ -91,68 +57,42 @@ struct DragonTaskThoughtCloud: View {
 }
 
 private struct TaskThoughtBubble: View {
-    let title: String
-    let isPrimary: Bool
-    let phase: Int
-
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var floating = false
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(Color.cyan)
-                    .frame(width: isPrimary ? 8 : 6, height: isPrimary ? 8 : 6)
-                    .shadow(color: .cyan.opacity(0.8), radius: 5)
-
-                if isPrimary {
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Image(systemName: "ellipsis")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.cyan)
-                        .opacity(floating ? 1 : 0.45)
-                } else {
-                    Image(systemName: "brain.head.profile")
-                        .font(.caption)
-                        .foregroundStyle(.cyan)
-                    Text(title)
-                        .font(.caption2.weight(.medium))
-                        .lineLimit(1)
+            Circle()
+                .fill(Color.cyan.opacity(0.14))
+                .frame(width: 42, height: 42)
+                .overlay {
+                    Circle()
+                        .stroke(Color.cyan.opacity(0.46), lineWidth: 1)
                 }
-            }
-            .padding(.horizontal, isPrimary ? 12 : 9)
-            .padding(.vertical, isPrimary ? 9 : 7)
-            .frame(maxWidth: isPrimary ? 190 : 118, alignment: .leading)
-            .background(
-                Color.cyan.opacity(isPrimary ? 0.16 : 0.10),
-                in: .rect(cornerRadius: isPrimary ? 18 : 14)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: isPrimary ? 18 : 14)
-                    .stroke(Color.cyan.opacity(isPrimary ? 0.52 : 0.28), lineWidth: 1)
-            }
+                .overlay {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.cyan)
+                        .opacity(floating ? 1 : 0.55)
+                }
 
             Circle()
-                .fill(Color.cyan.opacity(0.34))
-                .frame(width: isPrimary ? 9 : 7, height: isPrimary ? 9 : 7)
-                .offset(x: isPrimary ? 13 : 10, y: isPrimary ? 9 : 7)
+                .fill(Color.cyan.opacity(0.32))
+                .frame(width: 8, height: 8)
+                .offset(x: 6, y: 6)
             Circle()
                 .fill(Color.cyan.opacity(0.22))
-                .frame(width: isPrimary ? 5 : 4, height: isPrimary ? 5 : 4)
-                .offset(x: isPrimary ? 7 : 5, y: isPrimary ? 17 : 13)
+                .frame(width: 4, height: 4)
+                .offset(x: 2, y: 14)
         }
-        .offset(y: reduceMotion ? 0 : (floating ? -4 : 3))
-        .scaleEffect(reduceMotion ? 1 : (floating ? 1.015 : 0.985))
-        .shadow(color: .cyan.opacity(isPrimary ? 0.18 : 0.08), radius: isPrimary ? 12 : 7)
+        .frame(width: 48, height: 50)
+        .offset(y: reduceMotion ? 0 : (floating ? -2 : 2))
+        .scaleEffect(reduceMotion ? 1 : (floating ? 1.02 : 0.98))
+        .shadow(color: .cyan.opacity(0.16), radius: 8)
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(
-                .easeInOut(duration: 1.45 + Double(phase) * 0.17)
-                    .delay(Double(phase) * 0.12)
+                .easeInOut(duration: 1.35)
                     .repeatForever(autoreverses: true)
             ) {
                 floating = true

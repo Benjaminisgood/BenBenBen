@@ -27,7 +27,13 @@ struct NotchCompanionView: View {
 
             taskOverlay
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Keep the root's reported size pinned so task-state overlays can only
+        // redraw inside the notch and can never resize the NSPanel.
+        .frame(
+            width: layout.panelSize.width,
+            height: layout.panelSize.height,
+            alignment: .top
+        )
         .clipShape(TopAttachedRoundedShape(radius: 18))
         .overlay {
             TopAttachedRoundedShape(radius: 18)
@@ -69,14 +75,15 @@ struct NotchCompanionView: View {
                     threads: visibleTasks(in: store),
                     store: store,
                     selectedThreadID: store.selectedThreadID,
-                    isDetailVisible: false,
                     onSelect: { threadID in
                         store.selectedThreadID = threadID
                         onSelectTask(threadID)
                     }
                 )
-                .scaleEffect(0.58, anchor: .top)
-                .offset(y: max(0, layout.mascotTopOffset - 5))
+                .offset(
+                    x: min(58, max(32, layout.panelSize.width / 2 - 28)),
+                    y: max(0, layout.mascotTopOffset - 4)
+                )
                 .zIndex(2)
             }
         }

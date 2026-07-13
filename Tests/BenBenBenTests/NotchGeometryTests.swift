@@ -102,4 +102,25 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(reloaded.physicalWidth, 192)
         XCTAssertEqual(reloaded.physicalHeight, 70)
     }
+
+    @MainActor
+    func testNotchPanelRejectsTaskDrivenResize() {
+        let fixedSize = NSSize(width: 184, height: 140)
+        let panel = NotchPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        panel.lockedContentSize = fixedSize
+
+        panel.setFrame(
+            NSRect(x: 0, y: 0, width: 300, height: 178),
+            display: false
+        )
+        XCTAssertEqual(panel.frame.size, fixedSize)
+
+        panel.setContentSize(NSSize(width: 300, height: 178))
+        XCTAssertEqual(panel.frame.size, fixedSize)
+    }
 }
