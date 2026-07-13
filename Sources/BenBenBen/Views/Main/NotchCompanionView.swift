@@ -46,8 +46,10 @@ struct NotchCompanionView: View {
     let onCollapse: () -> Void
 
     @State private var composer = ""
+    @State private var isComposingNewTask = false
     @State private var dragonHasWalkedOut = false
     @State private var detailThreadID: String?
+    @FocusState private var isComposerFocused: Bool
 
     var body: some View {
         ZStack {
@@ -255,18 +257,28 @@ struct NotchCompanionView: View {
             .tint(voiceInteraction.isConversationEnabled ? .red : .green)
             .help(voiceInteraction.isConversationEnabled ? "关闭持续语音" : "开启持续语音")
 
-            TextField("输入会引导当前任务；也可作为新任务并行执行…", text: $composer, axis: .vertical)
+            TextField(composerPlaceholder, text: $composer, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...3)
+                .focused($isComposerFocused)
                 .onSubmit(send)
 
-            Button(action: sendAsNewTask) {
-                Label("新任务", systemImage: "plus.bubble")
+            Button(action: beginOrSendNewTask) {
+                Label(
+                    isComposingNewTask ? "新任务中" : "新任务",
+                    systemImage: isComposingNewTask ? "plus.bubble.fill" : "plus.bubble"
+                )
                     .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.glass)
-            .disabled(composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .help("不打断当前任务，另开一个并行任务")
+            .foregroundStyle(isComposingNewTask ? Color.cyan : Color.primary)
+            .help(
+                isComposingNewTask
+                    ? "正在输入一个独立任务；回车或点发送开始执行，再点一次取消"
+                    : "另开一个并行任务；也可以先点这里再输入"
+            )
+            .accessibilityLabel(isComposingNewTask ? "正在新建任务" : "新建任务")
+            .accessibilityHint("点击后输入任务，回车或点发送开始执行")
 
             Button {
                 screenContext.isEnabled.toggle()
@@ -351,14 +363,30 @@ struct NotchCompanionView: View {
         let text = composer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         composer = ""
-        onSendPrompt(text)
+        if isComposingNewTask {
+            isComposingNewTask = false
+            onStartNewTask(text)
+        } else {
+            onSendPrompt(text)
+        }
     }
 
-    private func sendAsNewTask() {
+    private func beginOrSendNewTask() {
         let text = composer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            isComposingNewTask.toggle()
+            isComposerFocused = isComposingNewTask
+            return
+        }
         composer = ""
+        isComposingNewTask = false
         onStartNewTask(text)
+    }
+
+    private var composerPlaceholder: String {
+        isComposingNewTask
+            ? "描述这个新任务，回车后并行执行…"
+            : "输入会引导当前任务；点“新任务”可另开任务…"
     }
 
     private func toggleVoice() {
