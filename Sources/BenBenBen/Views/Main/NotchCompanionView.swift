@@ -55,7 +55,6 @@ struct NotchCompanionView: View {
     let layout: NotchLayout
     let onSendPrompt: (String) -> Void
     let onStartNewTask: (String) -> Void
-    let onExpand: () -> Void
     let onMascotAction: () -> Void
     let onTaskDetailVisibilityChanged: (Bool) -> Void
     let onOpenSettings: () -> Void
@@ -84,11 +83,7 @@ struct NotchCompanionView: View {
         .contentShape(TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ben龙 Codex 伙伴")
-        .accessibilityHint(
-            drawerState.isExpanded
-                ? "单击回到当前工作，双击新建任务"
-                : "单击唤醒，双击新建任务，按住说话"
-        )
+        .accessibilityHint("单击恐龙切换休息动作；刘海收起与展开使用独立控件")
         .onChange(of: drawerState.isExpanded) { _, expanded in
             if expanded {
                 dragonHasWalkedOut = reduceMotion
@@ -141,16 +136,16 @@ struct NotchCompanionView: View {
                 revision: mascotModel.presentationRevision
             )
             .offset(y: 24)
+            .contentShape(Rectangle())
+            .gesture(mascotTapGesture)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Ben龙休息动作")
+            .accessibilityHint("单击切换休息动作")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { handleMascotClick() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
-        .contentShape(Rectangle())
-        .gesture(mascotTapGesture)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("唤醒 Ben龙")
-        .accessibilityHint("单击进入近身对话，双击新建任务")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { handleMascotSingleClick() }
     }
 
     private var conversationStage: some View {
@@ -178,7 +173,12 @@ struct NotchCompanionView: View {
                     .offset(y: dragonHasWalkedOut ? 8 : -96)
                     .contentShape(Rectangle())
                     .gesture(mascotTapGesture)
-                    .help("单击回到当前工作 · 双击新任务")
+                    .help("单击切换休息动作")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Ben龙休息动作")
+                    .accessibilityHint("单击切换休息动作")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { handleMascotClick() }
 
                     if let agentStore = agentContext.store,
                        !visibleTasks(in: agentStore).isEmpty {
@@ -378,51 +378,13 @@ struct NotchCompanionView: View {
     }
 
     private var mascotTapGesture: some Gesture {
-        TapGesture(count: 2)
-            .exclusively(before: TapGesture(count: 1))
-            .onEnded { result in
-                switch result {
-                case .first:
-                    beginNewTaskFromMascot()
-                case .second:
-                    handleMascotSingleClick()
-                }
-            }
+        TapGesture().onEnded(handleMascotClick)
     }
 
-    private func handleMascotSingleClick() {
+    private func handleMascotClick() {
         guard (!voiceInteraction.isRecording || voiceInteraction.isConversationEnabled),
               voiceInteraction.pendingTranscript == nil else { return }
-
-        guard drawerState.isExpanded else {
-            switch mascotModel.state {
-            case .working, .waitingApproval, .success, .error:
-                onMascotAction()
-            default:
-                onExpand()
-                interactionState.requestComposerFocus()
-            }
-            return
-        }
-
         onMascotAction()
-        switch mascotModel.state {
-        case .working, .waitingApproval, .success, .error:
-            break
-        default:
-            interactionState.requestComposerFocus()
-        }
-    }
-
-    private func beginNewTaskFromMascot() {
-        guard (!voiceInteraction.isRecording || voiceInteraction.isConversationEnabled),
-              voiceInteraction.pendingTranscript == nil else { return }
-
-        interactionState.beginNewTask()
-        if !drawerState.isExpanded {
-            onExpand()
-        }
-        interactionState.requestComposerFocus()
     }
 
     private func focusComposerAfterExpansion() {

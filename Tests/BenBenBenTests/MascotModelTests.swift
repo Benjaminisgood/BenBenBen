@@ -43,4 +43,43 @@ final class MascotModelTests: XCTestCase {
         XCTAssertTrue(MascotState.teaSip.isAmbientOnly)
         XCTAssertTrue(MascotState.stargaze.isAmbientOnly)
     }
+
+    func testDragonClickCyclesRestingActionsWithoutChangingAwakeState() {
+        let model = MascotModel()
+        model.setAwake(true)
+
+        model.cycleRestingAction()
+
+        XCTAssertTrue(model.isAwake)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertEqual(model.presentedState, .cameraReady)
+
+        model.cycleRestingAction()
+
+        XCTAssertTrue(model.isAwake)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertEqual(model.presentedState, .walkLeft)
+    }
+
+    func testDragonClickDoesNotWakeCollapsedDragon() {
+        let model = MascotModel()
+
+        model.cycleRestingAction()
+
+        XCTAssertFalse(model.isAwake)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertEqual(model.presentedState, .cameraReady)
+    }
+
+    func testDragonClickDoesNotOverrideBusinessState() {
+        let model = MascotModel()
+        model.setListening(true)
+        let revision = model.presentationRevision
+
+        model.cycleRestingAction()
+
+        XCTAssertEqual(model.state, .listening)
+        XCTAssertEqual(model.presentedState, .listening)
+        XCTAssertEqual(model.presentationRevision, revision)
+    }
 }

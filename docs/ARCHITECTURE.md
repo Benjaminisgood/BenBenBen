@@ -44,7 +44,7 @@ App bundle 为 `BenBenBen.app`，Bundle ID 为 `io.github.benjaminisgood.benbenb
 | `Views/Main/NotchAgentView.swift` | 旧完整 Agent 诊断 UI，保留为兼容实现，不再作为默认刘海页面。 |
 | `NotchPanelController.swift` | 单一 AppKit 刘海/浮动 panel、屏幕几何和事件桥接。 |
 
-单击刘海龙进入近身对话并回到当前工作，双击则进入新任务输入状态；五类共同窗口由菜单栏按需打开，不再由双击龙批量打开。每个窗口只提供文件列表、共同编辑区和一个 Codex composer，不展示 Agent 回复；每次 shared-window composer 提交都创建独立 thread，允许不同窗口或不同文件并行执行，只有 Agent 接受任务后才清空草稿。创建、教学、改写、执行和自动化策略由真实 Agent 根据上下文决定。
+空闲时单击恐龙只会按顺序切换下一组休息动作，不负责展开、收起刘海或聚焦输入框；恐龙不再提供双击命令。刘海状态由顶部收起按钮、菜单等独立入口控制。五类共同窗口由菜单栏按需打开，每个窗口只提供文件列表、共同编辑区和一个 Codex composer，不展示 Agent 回复；每次 shared-window composer 提交都创建独立 thread，允许不同窗口或不同文件并行执行，只有 Agent 接受任务后才清空草稿。创建、教学、改写、执行和自动化策略由真实 Agent 根据上下文决定。
 
 ### Agent
 

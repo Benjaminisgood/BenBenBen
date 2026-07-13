@@ -154,22 +154,41 @@ final class MascotModel: ObservableObject {
         }
     }
 
-    /// Gives the mascot a lightweight click response without reusing a stale
-    /// completed-thread association.
-    func interact() {
+    /// A dragon click only changes its current idle activity. It never opens,
+    /// closes, or focuses the notch conversation surface.
+    func cycleRestingAction() {
         guard state == .idle, !voiceOverride else { return }
 
         relatedThreadID = nil
+        bubbleText = nil
         stopAmbientBehavior()
         interactionTask?.cancel()
-        present(.success, restartingAnimation: true)
-        bubbleText = "嗨，我在这儿"
+
+        let moment = AmbientMoment.next(after: lastAmbientMoment)
+        lastAmbientMoment = moment
+        guard let firstFrame = moment.frames.first else { return }
+        present(firstFrame.pose, restartingAnimation: true)
 
         interactionTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(1_100))
-            guard let self, !Task.isCancelled, self.state == .idle else { return }
+            do {
+                try await Task.sleep(for: firstFrame.duration)
+                for frame in moment.frames.dropFirst() {
+                    guard let self,
+                          !Task.isCancelled,
+                          self.state == .idle,
+                          !self.voiceOverride else { return }
+                    self.present(frame.pose, restartingAnimation: true)
+                    try await Task.sleep(for: frame.duration)
+                }
+            } catch {
+                return
+            }
+
+            guard let self,
+                  !Task.isCancelled,
+                  self.state == .idle,
+                  !self.voiceOverride else { return }
             self.interactionTask = nil
-            self.bubbleText = nil
             self.present(.idle)
             self.startAmbientBehavior()
         }
@@ -378,5 +397,13 @@ private enum AmbientMoment: CaseIterable {
 
     static func random(avoiding previous: AmbientMoment?) -> AmbientMoment {
         allCases.filter { $0 != previous }.randomElement() ?? .wave
+    }
+
+    static func next(after previous: AmbientMoment?) -> AmbientMoment {
+        guard let previous,
+              let index = allCases.firstIndex(of: previous) else {
+            return allCases[0]
+        }
+        return allCases[(index + 1) % allCases.count]
     }
 }

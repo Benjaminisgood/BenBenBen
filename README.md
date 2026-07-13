@@ -2,7 +2,7 @@
 
 ![BenBenBen preview](docs/assets/readme-hero.png)
 
-`BenBenBen` 是住在 MacBook 刘海后面的个人 Codex 伙伴。紧凑态只露出“Ben龙”的一部分；单击后它走近并聚焦当前对话，双击则直接进入新任务输入状态。用户也可直接语音或文字对话。HTML、PY、MD、SCRIPTS、PLIST 五个持久共同窗口可从菜单栏按需打开。
+`BenBenBen` 是住在 MacBook 刘海后面的个人 Codex 伙伴。紧凑态只露出“Ben龙”的一部分；空闲时单击恐龙会切换下一组休息动作，不负责展开、收起刘海或聚焦输入框，也不再提供双击命令。用户可直接语音或文字对话。HTML、PY、MD、SCRIPTS、PLIST 五个持久共同窗口可从菜单栏按需打开。
 
 原始资料始终保存在 `~/keyoti`。App 的 SQLite 数据库只保存可重建的搜索索引和 UI 元数据，不替代 Markdown、脚本、Python、AppleScript 或 plist 文件。
 

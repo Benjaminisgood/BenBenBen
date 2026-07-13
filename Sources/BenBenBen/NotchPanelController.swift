@@ -215,12 +215,7 @@ final class NotchPanelController: NSObject {
     }
 
     private func handleMascotAction() {
-        switch mascotModel.state {
-        case .working, .waitingApproval, .success, .error:
-            showAgent()
-        default:
-            mascotModel.interact()
-        }
+        mascotModel.cycleRestingAction()
     }
 
     func showWorkbenchMode(_ mode: WorkbenchMode) {
@@ -370,7 +365,6 @@ final class NotchPanelController: NSObject {
             layout: layout,
             onSendPrompt: onSendPrompt,
             onStartNewTask: onStartNewTask,
-            onExpand: { [weak self] in self?.expand(animated: true) },
             onMascotAction: { [weak self] in self?.handleMascotAction() },
             onTaskDetailVisibilityChanged: { [weak self] visible in
                 self?.setTaskDetailVisible(visible)
