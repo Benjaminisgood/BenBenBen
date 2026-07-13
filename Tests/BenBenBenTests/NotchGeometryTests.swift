@@ -77,4 +77,27 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(layout.compactTopOffset, 0)
         XCTAssertEqual(layout.expandedTopOffset, 0)
     }
+
+    func testCompactStageStartsVisibleContentBelowPhysicalNotch() {
+        let centerY = CompactHomeStageGeometry.safeHomeCenterScreenY(
+            homeHeight: 62,
+            physicalNotchHeight: 32,
+            mascotSize: 98,
+            homeScale: 0.5
+        )
+
+        XCTAssertGreaterThan(centerY, 32)
+        XCTAssertLessThanOrEqual(centerY, 58)
+    }
+
+    func testCompactStageUsesHomeProportionWithoutPhysicalNotch() {
+        let centerY = CompactHomeStageGeometry.safeHomeCenterScreenY(
+            homeHeight: 62,
+            physicalNotchHeight: 0,
+            mascotSize: 98,
+            homeScale: 0.5
+        )
+
+        XCTAssertEqual(centerY, 42.16, accuracy: 0.001)
+    }
 }

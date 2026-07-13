@@ -9,6 +9,9 @@ final class MascotModel: ObservableObject {
     @Published private(set) var bubbleText: String?
     @Published private(set) var relatedThreadID: String?
     @Published private(set) var isAwake = false
+    @Published private(set) var compactHomeScene: CompactHomeScene = .tucked
+    @Published private(set) var compactHomeSceneRevision = 0
+    @Published private(set) var compactHomeMessage: String?
 
     private var agentCancellables = Set<AnyCancellable>()
     private var transientTask: Task<Void, Never>?
@@ -59,6 +62,7 @@ final class MascotModel: ObservableObject {
 
         if awake {
             stopAmbientBehavior()
+            presentCompactHomeScene(.tucked, message: nil)
             if state == .idle, interactionTask == nil {
                 present(.idle)
             }
@@ -130,6 +134,11 @@ final class MascotModel: ObservableObject {
                       !self.voiceOverride else { return }
                 let moment = AmbientMoment.random(avoiding: self.lastAmbientMoment)
                 self.lastAmbientMoment = moment
+                self.presentCompactHomeScene(
+                    moment.compactHomeScene,
+                    message: moment.compactHomeMessage,
+                    restartingAnimation: true
+                )
 
                 for frame in moment.frames {
                     guard self.state == .idle,
@@ -150,14 +159,15 @@ final class MascotModel: ObservableObject {
                       !self.voiceOverride,
                       self.interactionTask == nil else { return }
                 self.present(.idle)
+                self.presentCompactHomeScene(.tucked, message: nil)
             }
         }
     }
 
-    /// A dragon click only changes its current idle activity. It never opens,
-    /// closes, or focuses the notch conversation surface.
+    /// Only the expanded dragon is interactive. The folded dragon lives on a
+    /// click-through ambient stage and cannot be advanced manually.
     func cycleRestingAction() {
-        guard state == .idle, !voiceOverride else { return }
+        guard isAwake, state == .idle, !voiceOverride else { return }
 
         relatedThreadID = nil
         bubbleText = nil
@@ -190,6 +200,7 @@ final class MascotModel: ObservableObject {
                   !self.voiceOverride else { return }
             self.interactionTask = nil
             self.present(.idle)
+            self.presentCompactHomeScene(.tucked, message: nil)
             self.startAmbientBehavior()
         }
     }
@@ -292,8 +303,22 @@ final class MascotModel: ObservableObject {
             interactionTask?.cancel()
             interactionTask = nil
             stopAmbientBehavior()
+            presentCompactHomeScene(.tucked, message: nil)
             present(newState)
         }
+    }
+
+    private func presentCompactHomeScene(
+        _ scene: CompactHomeScene,
+        message: String?,
+        restartingAnimation: Bool = false
+    ) {
+        guard restartingAnimation
+                || compactHomeScene != scene
+                || compactHomeMessage != message else { return }
+        compactHomeScene = scene
+        compactHomeMessage = message
+        compactHomeSceneRevision &+= 1
     }
 
     private func present(_ newState: MascotState, restartingAnimation: Bool = false) {
@@ -392,6 +417,31 @@ private enum AmbientMoment: CaseIterable {
             return [AmbientFrame(pose: .sleep, duration: .milliseconds(3_200))]
         case .celebrate:
             return [AmbientFrame(pose: .success, duration: .milliseconds(1_100))]
+        }
+    }
+
+    var compactHomeScene: CompactHomeScene {
+        switch self {
+        case .photography, .stretch, .celebrate:
+            return .popOut
+        case .snack, .stargazing:
+            return .throwStar
+        case .tea, .bubbles, .wave:
+            return .talk
+        case .resting, .rain, .nap:
+            return .hide
+        case .stroll, .daydream, .cloudWatching, .reading, .music,
+             .gardening, .sketch, .ponder:
+            return .peek3D
+        }
+    }
+
+    var compactHomeMessage: String? {
+        switch self {
+        case .tea: return "喝口茶？"
+        case .bubbles: return "噗噜噗噜"
+        case .wave: return "嘿，我在家！"
+        default: return nil
         }
     }
 

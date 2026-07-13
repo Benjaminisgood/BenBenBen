@@ -125,6 +125,8 @@ Runtime 安装不会隐式运行 Brewfile、macOS defaults、Git sync/push、服
 
 `MascotState` 的核心业务状态包含 idle、listening、thinking、working、waitingApproval、success、error 和 sleep，另有只供空闲编排使用的活动姿态。业务状态由 Codex/语音事件驱动并可随时打断当前序列；刘海展开时 `MascotModel.isAwake` 会停止所有空闲活动并恢复 idle，只有收起且业务状态为 idle 时才会编排拍照、散步、喝茶、发呆、休息、阅读、听歌、浇花等动作。SwiftUI 负责逐帧切换、呼吸/轻跳、Reduce Motion 与资源缓存。三张九格视觉源切片为 27 张透明 sprite，其中包含独立 logo pose，并由 logo 生成 1024 App 图标。
 
+折叠状态另有 `CompactHomeScene` 视觉层，它不改变业务状态，只把当前休息动作投影为随机场景。AppKit 在黑色 compact panel 上方维护一张更大的透明 `compactEffectPanel`，该窗口 `ignoresMouseEvents`，因此角色、投掷物和气泡可以越过家的下沿进入桌面区域而不会形成新的点击热区。舞台使用 `NSScreen.measuredNotchSize` 区分真实物理刘海与无刘海回退布局，并把角色的可见起点压到摄像头外壳下方的黑色延伸区。`CompactDragonHomeView` 使用同一套 sprite 加透视旋转、窗口前沿遮挡、动态阴影、投掷粒子和本地短气泡，表现跳出、投掷、说话、躲藏与立体探头；切换为展开或业务状态时会立即回到 `tucked` 并隐藏透明层，避免覆盖任务反馈。
+
 `VoiceInteractionController` 使用 Speech 与 AVFoundation：长按 250 ms 后录音、松开听写、两秒可取消倒计时后发送；不常驻监听。只有语音发起的短回复可按设置朗读，随时可停止。
 
 ## 6. 默认目录
