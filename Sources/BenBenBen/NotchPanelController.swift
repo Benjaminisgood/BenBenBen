@@ -75,6 +75,7 @@ final class NotchPanelController: NSObject {
     private var didStartVoiceHold = false
     private var suppressNextHotClick = false
     private let onSendPrompt: (String) -> Void
+    private let onStartNewTask: (String) -> Void
     private let onOpenCollaboration: () -> Void
 
     init(
@@ -84,6 +85,7 @@ final class NotchPanelController: NSObject {
         screenContext: ScreenContextMonitor = ScreenContextMonitor(),
         agentContext: NotchAgentContext = NotchAgentContext(),
         onSendPrompt: @escaping (String) -> Void = { _ in },
+        onStartNewTask: @escaping (String) -> Void = { _ in },
         onOpenCollaboration: @escaping () -> Void = {}
     ) {
         self.environment = environment
@@ -92,6 +94,7 @@ final class NotchPanelController: NSObject {
         self.screenContext = screenContext
         self.agentContext = agentContext
         self.onSendPrompt = onSendPrompt
+        self.onStartNewTask = onStartNewTask
         self.onOpenCollaboration = onOpenCollaboration
         compactPanel = NotchPanel(
             contentRect: .zero,
@@ -364,6 +367,7 @@ final class NotchPanelController: NSObject {
             screenContext: screenContext,
             layout: layout,
             onSendPrompt: onSendPrompt,
+            onStartNewTask: onStartNewTask,
             onExpand: { [weak self] in self?.expand(animated: true) },
             onMascotAction: { [weak self] in self?.handleMascotAction() },
             onOpenSettings: { [weak self] in self?.openSettingsPopover() },

@@ -94,6 +94,9 @@ final class AppModel: ObservableObject {
         onSendPrompt: { [weak self] prompt in
             self?.sendAgentComposer(prompt)
         },
+        onStartNewTask: { [weak self] prompt in
+            self?.startNewAgentTask(prompt)
+        },
         onOpenCollaboration: { [weak self] in
             self?.showArtifactWindows()
         }
@@ -212,7 +215,8 @@ final class AppModel: ObservableObject {
         voiceInitiated: Bool = false,
         focusedFile: URL? = nil,
         screenImageURL: URL? = nil,
-        proactive: Bool = false
+        proactive: Bool = false,
+        forceNewThread: Bool = false
     ) {
         Task {
             if agentStore == nil {
@@ -220,14 +224,20 @@ final class AppModel: ObservableObject {
             }
             guard let store = agentStore else { return }
 
-            var threadID = store.selectedThreadID
+            var threadID = forceNewThread ? nil : store.selectedThreadID
             if threadID == nil {
-                let options = AgentThreadStartOptions(cwd: personalWorkspace.registry.root.path)
+                let options = AgentThreadStartOptions(
+                    cwd: personalWorkspace.registry.root.path,
+                    executionMode: store.defaultExecutionMode
+                )
                 threadID = await store.createThread(options: options)?.id
             }
             guard let threadID else { return }
 
-            let fallbackOptions = AgentThreadStartOptions(cwd: personalWorkspace.registry.root.path)
+            let fallbackOptions = AgentThreadStartOptions(
+                cwd: personalWorkspace.registry.root.path,
+                executionMode: store.executionMode(for: threadID)
+            )
             let artifactBaseline = await Task.detached(priority: .utility) {
                 AgentArtifactSnapshot.capture()
             }.value
@@ -256,6 +266,7 @@ final class AppModel: ObservableObject {
                 }
                 if voiceInitiated {
                     voiceReplyThreadID = sent.threadID
+                    voiceInteraction.speakVoiceInitiatedReply("收到，我开始处理这个任务。")
                 }
                 agentConversation[sent.threadID, default: []].append(
                     AgentConversationEntry(role: .user, text: prompt)
@@ -267,6 +278,10 @@ final class AppModel: ObservableObject {
     func sendAgentComposer(_ prompt: String, voiceInitiated: Bool = false) {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if let newTaskPrompt = Self.newTaskPrompt(from: text) {
+            startNewAgentTask(newTaskPrompt, voiceInitiated: voiceInitiated)
+            return
+        }
         guard let store = agentStore,
               let threadID = store.selectedThreadID,
               let activeTurn = store.activeTurns[threadID],
@@ -282,8 +297,21 @@ final class AppModel: ObservableObject {
             AgentConversationEntry(role: .user, text: text)
         )
         Task {
-            await store.steer(text, threadID: threadID, turnID: activeTurn.id)
+            let accepted = await store.steer(text, threadID: threadID, turnID: activeTurn.id)
+            if accepted, voiceInitiated {
+                voiceInteraction.speakVoiceInitiatedReply("收到，我会按你的新要求继续。")
+            }
         }
+    }
+
+    func startNewAgentTask(_ prompt: String, voiceInitiated: Bool = false) {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        sendQuickPrompt(
+            text,
+            voiceInitiated: voiceInitiated,
+            forceNewThread: true
+        )
     }
 
     private func reactToScreen(_ screenshotURL: URL) {
@@ -367,6 +395,16 @@ final class AppModel: ObservableObject {
 
     private static func turnKey(threadID: String, turnID: String) -> String {
         "\(threadID):\(turnID)"
+    }
+
+    private static func newTaskPrompt(from text: String) -> String? {
+        let prefixes = ["新任务", "另一个任务", "另外一个任务"]
+        for prefix in prefixes where text.hasPrefix(prefix) {
+            let remainder = text.dropFirst(prefix.count)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "：:，,。 "))
+            return remainder.isEmpty ? nil : remainder
+        }
+        return nil
     }
 
     private static func visibleAgentMessage(_ raw: String) -> String {

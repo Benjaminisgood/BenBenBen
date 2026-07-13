@@ -10,7 +10,12 @@ protocol AgentRuntime: Sendable {
     func startThread(_ options: AgentThreadStartOptions) async throws -> AgentThread
     func resumeThread(id: String, cwd: String?) async throws -> AgentThread
     func archiveThread(id: String) async throws
-    func startTurn(threadID: String, text: String, localImagePath: String?) async throws -> AgentTurn
+    func startTurn(
+        threadID: String,
+        text: String,
+        localImagePath: String?,
+        options: AgentTurnStartOptions
+    ) async throws -> AgentTurn
     func steerTurn(threadID: String, turnID: String, text: String) async throws -> String
     func interruptTurn(threadID: String, turnID: String) async throws
     func respondToApproval(id: AgentRequestID, response: AgentApprovalResponse) async throws

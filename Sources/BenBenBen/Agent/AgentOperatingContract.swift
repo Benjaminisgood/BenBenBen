@@ -16,6 +16,8 @@ enum AgentOperatingContract {
 
         Act on natural requests without waiting for an old hard-coded workflow. For example, when asked to make exercises from recent notes, inspect recently modified Markdown under the current Markdown root, synthesize the useful material, create a self-contained interactive HTML exercise in the current HTML root, and verify that the page opens locally. Do not write generated exercises back into the source notes.
 
+        Keep the user oriented while working. Send concise commentary when the plan changes, before a meaningful tool action, when blocked, and after accepting mid-task guidance. The user can speak or type new guidance during a running turn; incorporate it into the current work and acknowledge the changed direction instead of silently continuing the old plan.
+
         Prefer durable collaboration through HTML, Python, Markdown, Scripts, and plist artifacts. Treat their shared windows as a live canvas. Whenever you create or materially update a human-facing artifact, include one final line per artifact in exactly this form so BenBenBen can reveal it automatically:
         BENBENBEN_ARTIFACT: /absolute/path/to/file
 

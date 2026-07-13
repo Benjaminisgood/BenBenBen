@@ -13,7 +13,21 @@ final class AgentStore: ObservableObject {
     @Published private(set) var activeTurns: [String: AgentTurn] = [:]
     @Published private(set) var agentMessages: [String: String] = [:]
     @Published private(set) var commandOutputs: [String: String] = [:]
+    @Published private(set) var commandOutputsByThread: [String: String] = [:]
     @Published private(set) var diffs: [String: String] = [:]
+    @Published private(set) var taskPlans: [String: [AgentPlanStep]] = [:]
+    @Published private(set) var taskActivities: [String: [AgentTaskActivity]] = [:]
+    @Published private(set) var taskPrompts: [String: String] = [:]
+    @Published private(set) var latestGuidance: [String: String] = [:]
+    @Published private(set) var executionModes: [String: AgentTaskExecutionMode] = [:]
+    @Published var defaultExecutionMode = AgentTaskExecutionMode.persistedDefault {
+        didSet {
+            UserDefaults.standard.set(
+                defaultExecutionMode.rawValue,
+                forKey: "benbenben.agent.executionMode"
+            )
+        }
+    }
     @Published private(set) var tokenUsage: [String: AgentTokenUsage] = [:]
     @Published private(set) var pendingApprovals: [AgentRequestID: AgentApprovalRequest] = [:]
     @Published private(set) var warnings: [String] = []
@@ -108,6 +122,7 @@ final class AgentStore: ObservableObject {
             let thread = try await runtime.startThread(options)
             upsert(thread)
             loadedThreadIDs.insert(thread.id)
+            executionModes[thread.id] = options.executionMode
             selectedThreadID = thread.id
             lastError = nil
             return thread
@@ -123,6 +138,9 @@ final class AgentStore: ObservableObject {
             let thread = try await runtime.resumeThread(id: id, cwd: cwd)
             upsert(thread)
             loadedThreadIDs.insert(thread.id)
+            if executionModes[thread.id] == nil {
+                executionModes[thread.id] = defaultExecutionMode
+            }
             selectedThreadID = thread.id
             lastError = nil
             return thread
@@ -157,13 +175,20 @@ final class AgentStore: ObservableObject {
                 fallbackOptions: fallbackOptions
             )
             agentMessages[readyThreadID] = ""
+            if taskPrompts[readyThreadID] == nil {
+                taskPrompts[readyThreadID] = trimmed
+            }
+            latestGuidance[readyThreadID] = nil
+            let mode = executionMode(for: readyThreadID)
             let turn = try await runtime.startTurn(
                 threadID: readyThreadID,
                 text: trimmed,
-                localImagePath: localImagePath
+                localImagePath: localImagePath,
+                options: AgentTurnStartOptions(executionMode: mode)
             )
             lastError = nil
             activeTurns[readyThreadID] = turn
+            latestGuidance[readyThreadID] = "收到，我开始处理这个任务。"
             return AgentSentTurn(threadID: readyThreadID, turn: turn)
         } catch {
             if let bridgeError = error as? CodexBridgeError, bridgeError.isMissingThread {
@@ -172,13 +197,18 @@ final class AgentStore: ObservableObject {
                 do {
                     let replacement = try await startReplacementThread(options: fallbackOptions)
                     agentMessages[replacement.id] = ""
+                    taskPrompts[replacement.id] = trimmed
+                    latestGuidance[replacement.id] = nil
+                    let mode = executionMode(for: replacement.id)
                     let turn = try await runtime.startTurn(
                         threadID: replacement.id,
                         text: trimmed,
-                        localImagePath: localImagePath
+                        localImagePath: localImagePath,
+                        options: AgentTurnStartOptions(executionMode: mode)
                     )
                     lastError = nil
                     activeTurns[replacement.id] = turn
+                    latestGuidance[replacement.id] = "收到，我开始处理这个任务。"
                     return AgentSentTurn(threadID: replacement.id, turn: turn)
                 } catch {
                     record(error)
@@ -190,21 +220,64 @@ final class AgentStore: ObservableObject {
         }
     }
 
-    func steer(_ text: String, threadID: String, turnID: String) async {
+    @discardableResult
+    func steer(_ text: String, threadID: String, turnID: String) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return false }
         do {
             _ = try await runtime.steerTurn(threadID: threadID, turnID: turnID, text: trimmed)
+            latestGuidance[threadID] = "收到，我会按这条引导继续：\(Self.shortLabel(trimmed, limit: 42))"
+            upsertActivity(
+                AgentTaskActivity(
+                    id: "guidance:\(UUID().uuidString)",
+                    kind: .guidance,
+                    title: "收到新的引导",
+                    detail: trimmed,
+                    status: "completed",
+                    updatedAt: Date()
+                ),
+                threadID: threadID
+            )
+            lastError = nil
+            return true
         } catch {
             record(error)
+            return false
         }
     }
 
     func interrupt(threadID: String, turnID: String) async {
         do {
             try await runtime.interruptTurn(threadID: threadID, turnID: turnID)
+            upsertActivity(
+                AgentTaskActivity(
+                    id: "interrupt:\(turnID)",
+                    kind: .lifecycle,
+                    title: "任务已停止",
+                    detail: nil,
+                    status: "interrupted",
+                    updatedAt: Date()
+                ),
+                threadID: threadID
+            )
         } catch {
             record(error)
+        }
+    }
+
+    func executionMode(for threadID: String) -> AgentTaskExecutionMode {
+        executionModes[threadID] ?? defaultExecutionMode
+    }
+
+    func setExecutionMode(_ mode: AgentTaskExecutionMode, for threadID: String) {
+        executionModes[threadID] = mode
+        if mode != .askMe {
+            let approvals = pendingApprovals.values.filter { $0.threadID == threadID }
+            for approval in approvals {
+                Task { [weak self] in
+                    await self?.automaticallyResolve(approval, mode: mode)
+                }
+            }
         }
     }
 
@@ -244,18 +317,40 @@ final class AgentStore: ObservableObject {
                 "Codex \(actual) differs from the schema-tested version \(expected). Run the protocol contract tests."
 
         case let .agentMessageDelta(context, delta):
+            latestGuidance[context.threadID] = nil
             agentMessages[context.threadID, default: ""].append(delta)
 
         case let .commandOutputDelta(context, delta):
             let key = context.itemID ?? context.turnID
             commandOutputs[key, default: ""].append(delta)
+            commandOutputsByThread[context.threadID, default: ""].append(delta)
 
         case let .fileChangeOutputDelta(context, delta):
             let key = context.itemID ?? context.turnID
             commandOutputs[key, default: ""].append(delta)
+            commandOutputsByThread[context.threadID, default: ""].append(delta)
 
         case let .diffUpdated(context, diff):
             diffs[context.threadID] = diff
+
+        case let .planUpdated(threadID, _, steps, explanation):
+            taskPlans[threadID] = steps
+            if let explanation, !explanation.isEmpty {
+                upsertActivity(
+                    AgentTaskActivity(
+                        id: "plan-explanation",
+                        kind: .reasoning,
+                        title: "执行计划已更新",
+                        detail: explanation,
+                        status: "inProgress",
+                        updatedAt: Date()
+                    ),
+                    threadID: threadID
+                )
+            }
+
+        case let .taskActivityUpdated(threadID, _, activity):
+            upsertActivity(activity, threadID: threadID)
 
         case let .tokenUsageUpdated(threadID, _, usage):
             tokenUsage[threadID] = usage
@@ -263,10 +358,34 @@ final class AgentStore: ObservableObject {
         case let .turnStarted(threadID, turn):
             lastError = nil
             activeTurns[threadID] = turn
+            commandOutputsByThread[threadID] = ""
+            upsertActivity(
+                AgentTaskActivity(
+                    id: "turn:\(turn.id)",
+                    kind: .lifecycle,
+                    title: "任务开始执行",
+                    detail: nil,
+                    status: turn.status,
+                    updatedAt: Date()
+                ),
+                threadID: threadID
+            )
 
         case let .turnCompleted(threadID, turn):
             activeTurns[threadID] = turn
             pendingApprovals = pendingApprovals.filter { $0.value.threadID != threadID }
+            latestGuidance[threadID] = nil
+            upsertActivity(
+                AgentTaskActivity(
+                    id: "turn:\(turn.id)",
+                    kind: .lifecycle,
+                    title: turn.status.lowercased() == "completed" ? "任务已经完成" : "任务已结束",
+                    detail: turn.errorMessage,
+                    status: turn.status,
+                    updatedAt: Date()
+                ),
+                threadID: threadID
+            )
 
         case let .threadUpdated(thread):
             upsert(thread)
@@ -275,7 +394,29 @@ final class AgentStore: ObservableObject {
             removeThread(threadID)
 
         case let .approvalRequested(request):
-            pendingApprovals[request.id] = request
+            if let threadID = request.threadID {
+                upsertActivity(
+                    AgentTaskActivity(
+                        id: "approval:\(request.id)",
+                        kind: .approval,
+                        title: "需要权限确认",
+                        detail: request.reason ?? request.command,
+                        status: "waiting",
+                        updatedAt: Date()
+                    ),
+                    threadID: threadID
+                )
+            }
+            if let threadID = request.threadID {
+                let mode = executionMode(for: threadID)
+                if mode != .askMe {
+                    Task { [weak self] in await self?.automaticallyResolve(request, mode: mode) }
+                } else {
+                    pendingApprovals[request.id] = request
+                }
+            } else {
+                pendingApprovals[request.id] = request
+            }
 
         case let .loginCompleted(_, success, error):
             if success {
@@ -321,6 +462,12 @@ final class AgentStore: ObservableObject {
     private func removeThread(_ id: String) {
         loadedThreadIDs.remove(id)
         threads.removeAll { $0.id == id }
+        taskPlans[id] = nil
+        taskActivities[id] = nil
+        taskPrompts[id] = nil
+        latestGuidance[id] = nil
+        executionModes[id] = nil
+        commandOutputsByThread[id] = nil
         if selectedThreadID == id {
             selectedThreadID = threads.first?.id
         }
@@ -339,6 +486,9 @@ final class AgentStore: ObservableObject {
             let thread = try await runtime.resumeThread(id: id, cwd: cwd)
             upsert(thread)
             loadedThreadIDs.insert(thread.id)
+            if executionModes[thread.id] == nil {
+                executionModes[thread.id] = defaultExecutionMode
+            }
             selectedThreadID = thread.id
             lastError = nil
             return thread.id
@@ -356,6 +506,7 @@ final class AgentStore: ObservableObject {
         let thread = try await runtime.startThread(options)
         upsert(thread)
         loadedThreadIDs.insert(thread.id)
+        executionModes[thread.id] = options.executionMode
         selectedThreadID = thread.id
         lastError = nil
         return thread
@@ -368,6 +519,68 @@ final class AgentStore: ObservableObject {
     private func recordMessage(_ message: String) {
         lastError = message
         appendBounded(message, to: &warnings, limit: 200)
+    }
+
+    private func upsertActivity(_ activity: AgentTaskActivity, threadID: String) {
+        var activities = taskActivities[threadID, default: []]
+        if let index = activities.firstIndex(where: { $0.id == activity.id }) {
+            activities[index] = activity
+        } else {
+            activities.append(activity)
+        }
+        activities.sort { $0.updatedAt < $1.updatedAt }
+        if activities.count > 80 {
+            activities.removeFirst(activities.count - 80)
+        }
+        taskActivities[threadID] = activities
+    }
+
+    private func automaticallyResolve(
+        _ request: AgentApprovalRequest,
+        mode: AgentTaskExecutionMode
+    ) async {
+        let response: AgentApprovalResponse
+        let accepted: Bool
+        switch request.kind {
+        case .command, .fileChange, .legacyCommand, .legacyFileChange:
+            response = .acceptForSession
+            accepted = true
+        case .permissions:
+            if mode == .fullAccess {
+                response = .grantPermissions(
+                    request.rawParams["permissions"] ?? .object([:]),
+                    scope: "session"
+                )
+                accepted = true
+            } else {
+                // Auto-review keeps the workspace boundary intact. Full-access
+                // is the explicit mode that may grant sandbox escapes.
+                response = .decline
+                accepted = false
+            }
+        case .userInput, .mcpElicitation:
+            pendingApprovals[request.id] = request
+            return
+        }
+        await resolveApproval(id: request.id, response: response)
+        if let threadID = request.threadID {
+            upsertActivity(
+                AgentTaskActivity(
+                    id: "approval:\(request.id)",
+                    kind: .approval,
+                    title: accepted ? "权限已自动允许" : "越界权限已自动拒绝",
+                    detail: request.reason ?? request.command,
+                    status: accepted ? "completed" : "declined",
+                    updatedAt: Date()
+                ),
+                threadID: threadID
+            )
+        }
+    }
+
+    private static func shortLabel(_ text: String, limit: Int) -> String {
+        let singleLine = text.replacingOccurrences(of: "\n", with: " ")
+        return singleLine.count <= limit ? singleLine : String(singleLine.prefix(limit - 1)) + "…"
     }
 
     private func appendBounded(_ value: String, to values: inout [String], limit: Int) {

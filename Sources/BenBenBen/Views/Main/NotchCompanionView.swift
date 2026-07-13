@@ -39,6 +39,7 @@ struct NotchCompanionView: View {
 
     let layout: NotchLayout
     let onSendPrompt: (String) -> Void
+    let onStartNewTask: (String) -> Void
     let onExpand: () -> Void
     let onMascotAction: () -> Void
     let onOpenSettings: () -> Void
@@ -46,6 +47,7 @@ struct NotchCompanionView: View {
 
     @State private var composer = ""
     @State private var dragonHasWalkedOut = false
+    @State private var detailThreadID: String?
 
     var body: some View {
         ZStack {
@@ -135,21 +137,39 @@ struct NotchCompanionView: View {
             .padding(.horizontal, 18)
             .padding(.top, 10)
 
-            Spacer(minLength: 0)
-
-            ZStack(alignment: .topTrailing) {
-                MascotView(
-                    state: mascotModel.presentedState,
-                    size: 232,
-                    revision: mascotModel.presentationRevision
-                )
-                .scaleEffect(dragonHasWalkedOut ? 1 : 0.34, anchor: .top)
-                .offset(y: dragonHasWalkedOut ? 8 : -96)
-                DragonActionGlyph(state: mascotModel.presentedState)
-                    .offset(x: -18, y: 14)
+            if let agentStore = agentContext.store, !visibleTasks(in: agentStore).isEmpty {
+                taskBubbleRail(store: agentStore)
+                    .padding(.top, 8)
             }
-            .onTapGesture(perform: onMascotAction)
-            .help("单击互动；双击进入五类共同窗口")
+
+            Spacer(minLength: 4)
+
+            HStack(spacing: 18) {
+                ZStack(alignment: .topTrailing) {
+                    MascotView(
+                        state: mascotModel.presentedState,
+                        size: detailThreadID == nil ? 232 : 196,
+                        revision: mascotModel.presentationRevision
+                    )
+                    .scaleEffect(dragonHasWalkedOut ? 1 : 0.34, anchor: .top)
+                    .offset(y: dragonHasWalkedOut ? 8 : -96)
+                    DragonActionGlyph(state: mascotModel.presentedState)
+                        .offset(x: -14, y: 14)
+                }
+                .onTapGesture(perform: onMascotAction)
+                .help("单击互动；双击进入五类共同窗口")
+
+                if let detailThreadID, let agentStore = agentContext.store {
+                    TaskProgressDetailCard(
+                        threadID: detailThreadID,
+                        store: agentStore,
+                        onClose: { self.detailThreadID = nil }
+                    )
+                    .frame(width: 430)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy(duration: 0.25), value: detailThreadID)
 
             replyBubble.frame(maxWidth: 520)
             Spacer(minLength: 8)
@@ -167,6 +187,14 @@ struct NotchCompanionView: View {
         HStack(spacing: 6) {
             Circle().fill(agentIsReady ? Color.green : Color.orange).frame(width: 7, height: 7)
             Text(mascotModel.presentedState.shortLabel).font(.caption.weight(.semibold))
+            if let store = agentContext.store {
+                let running = store.activeTurns.values.filter { $0.status.isCompanionRunning }.count
+                if running > 0 {
+                    Text("· \(running) 个任务运行中")
+                        .font(.caption2)
+                        .foregroundStyle(.cyan)
+                }
+            }
             if screenContext.isEnabled {
                 Image(systemName: "eye.fill").font(.caption2).foregroundStyle(.green)
                     .help(screenContext.status.label)
@@ -187,6 +215,42 @@ struct NotchCompanionView: View {
             .overlay { RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1) }
     }
 
+    private func taskBubbleRail(store: AgentStore) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(visibleTasks(in: store)) { thread in
+                    Button {
+                        store.selectedThreadID = thread.id
+                        detailThreadID = thread.id
+                    } label: {
+                        TaskBubbleLabel(
+                            title: taskTitle(thread, store: store),
+                            status: store.activeTurns[thread.id]?.status ?? thread.status ?? "idle",
+                            isSelected: store.selectedThreadID == thread.id
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        ForEach(AgentTaskExecutionMode.allCases) { mode in
+                            Button {
+                                store.setExecutionMode(mode, for: thread.id)
+                            } label: {
+                                if store.executionMode(for: thread.id) == mode {
+                                    Label(mode.title, systemImage: "checkmark")
+                                } else {
+                                    Text(mode.title)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: 760)
+    }
+
     private var composerBar: some View {
         HStack(spacing: 8) {
             Button(action: toggleVoice) {
@@ -196,10 +260,18 @@ struct NotchCompanionView: View {
             .tint(voiceInteraction.isConversationEnabled ? .red : .green)
             .help(voiceInteraction.isConversationEnabled ? "关闭持续语音" : "开启持续语音")
 
-            TextField("直接和 Ben龙 说，或输入要共同完成的事…", text: $composer, axis: .vertical)
+            TextField("输入会引导当前任务；也可作为新任务并行执行…", text: $composer, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...3)
                 .onSubmit(send)
+
+            Button(action: sendAsNewTask) {
+                Label("新任务", systemImage: "plus.bubble")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.glass)
+            .disabled(composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("不打断当前任务，另开一个并行任务")
 
             Button {
                 screenContext.isEnabled.toggle()
@@ -258,13 +330,16 @@ struct NotchCompanionView: View {
         if voiceInteraction.isRecording, !voiceInteraction.liveTranscript.isEmpty {
             return voiceInteraction.liveTranscript
         }
-        if let bubble = mascotModel.bubbleText, !bubble.isEmpty { return bubble }
         guard let agentStore = agentContext.store else { return "我正在连接 Codex…" }
         if let threadID = agentStore.selectedThreadID {
+            if let acknowledgement = agentStore.latestGuidance[threadID], !acknowledgement.isEmpty {
+                return acknowledgement
+            }
             let reply = agentStore.agentMessages[threadID]?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !reply.isEmpty { return reply }
         }
+        if let bubble = mascotModel.bubbleText, !bubble.isEmpty { return bubble }
         return "告诉我你正在做什么。双击我，打开 HTML、PY、MD、SCRIPTS、PLIST 五个共同窗口。"
     }
 
@@ -275,8 +350,32 @@ struct NotchCompanionView: View {
         onSendPrompt(text)
     }
 
+    private func sendAsNewTask() {
+        let text = composer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        composer = ""
+        onStartNewTask(text)
+    }
+
     private func toggleVoice() {
         voiceInteraction.toggleConversation()
+    }
+
+    private func visibleTasks(in store: AgentStore) -> [AgentThread] {
+        Array(store.threads.sorted { left, right in
+            let leftRunning = store.activeTurns[left.id]?.status.isCompanionRunning == true
+            let rightRunning = store.activeTurns[right.id]?.status.isCompanionRunning == true
+            if leftRunning != rightRunning { return leftRunning }
+            return (left.updatedAt ?? left.createdAt ?? 0) > (right.updatedAt ?? right.createdAt ?? 0)
+        }.prefix(8))
+    }
+
+    private func taskTitle(_ thread: AgentThread, store: AgentStore) -> String {
+        let source = store.taskPrompts[thread.id] ?? thread.name ?? thread.preview
+        let normalized = source.replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.isEmpty { return "任务 \(thread.id.prefix(6))" }
+        return normalized.count > 24 ? String(normalized.prefix(23)) + "…" : normalized
     }
 }
 

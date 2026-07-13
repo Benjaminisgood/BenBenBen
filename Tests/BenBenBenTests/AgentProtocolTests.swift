@@ -94,6 +94,18 @@ final class AgentProtocolTests: XCTestCase {
             return false
         })
         XCTAssertTrue(events.contains { event in
+            if case let .planUpdated(threadID, _, steps, _) = event {
+                return threadID == "thread-1" && steps.first?.step == "Run tests"
+            }
+            return false
+        })
+        XCTAssertTrue(events.contains { event in
+            if case let .taskActivityUpdated(_, _, activity) = event {
+                return activity.kind == .command && activity.detail == "swift test"
+            }
+            return false
+        })
+        XCTAssertTrue(events.contains { event in
             if case let .unknownMessage(method, _) = event { return method == "future/event" }
             return false
         })
@@ -135,11 +147,14 @@ final class AgentProtocolTests: XCTestCase {
         let turn = try await runtime.startTurn(
             threadID: "thread-new",
             text: "Run tests",
-            localImagePath: "/tmp/current-screen.png"
+            localImagePath: "/tmp/current-screen.png",
+            options: AgentTurnStartOptions(executionMode: .fullAccess)
         )
         XCTAssertEqual(turn.id, "turn-new")
         XCTAssertTrue(fixture.trace.contains(#""type":"localImage""#))
         XCTAssertTrue(fixture.trace.contains("current-screen.png"))
+        XCTAssertTrue(fixture.trace.contains(#""approvalPolicy":"never""#))
+        XCTAssertTrue(fixture.trace.contains(#""sandboxPolicy":"danger-full-access""#))
         let steeredID = try await runtime.steerTurn(
             threadID: "thread-new",
             turnID: "turn-new",
@@ -213,6 +228,41 @@ final class AgentProtocolTests: XCTestCase {
         await runtime.stop()
     }
 
+    @MainActor
+    func testAgentStoreProjectsProgressGuidanceAndPerTaskPermissions() async throws {
+        let fixture = try TemporaryCodexAppServer()
+        defer { fixture.remove() }
+        let installation = try await CodexExecutableDetector.probe(fixture.executableURL)
+        let runtime = CodexProcessActor(installation: installation, requestTimeout: .seconds(3))
+        let store = AgentStore(runtime: runtime)
+
+        await store.connect(threadQuery: AgentThreadListQuery(limit: 25, cwd: ["/tmp/project"]))
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(store.taskPlans["thread-1"]?.first?.step, "Run tests")
+        XCTAssertTrue(store.taskActivities["thread-1"]?.contains { $0.kind == .command } == true)
+        store.setExecutionMode(.autoReview, for: "thread-1")
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertTrue(store.pendingApprovals.values.allSatisfy { $0.threadID != "thread-1" })
+        XCTAssertTrue(store.taskActivities["thread-1"]?.contains {
+            $0.title == "越界权限已自动拒绝"
+        } == true)
+
+        let options = AgentThreadStartOptions(cwd: "/tmp/project", executionMode: .fullAccess)
+        let createdThread = await store.createThread(options: options)
+        let thread = try XCTUnwrap(createdThread)
+        XCTAssertEqual(store.executionMode(for: thread.id), .fullAccess)
+        let startedTurn = await store.send("Run in parallel", to: thread.id, fallbackOptions: options)
+        let sent = try XCTUnwrap(startedTurn)
+        XCTAssertEqual(store.latestGuidance[thread.id], "收到，我开始处理这个任务。")
+
+        let accepted = await store.steer("Focus on the HTML first", threadID: thread.id, turnID: sent.turn.id)
+        XCTAssertTrue(accepted)
+        XCTAssertTrue(store.latestGuidance[thread.id]?.contains("Focus on the HTML first") == true)
+        XCTAssertTrue(fixture.trace.contains(#""approvalPolicy":"never""#))
+        XCTAssertTrue(fixture.trace.contains(#""sandboxPolicy":"danger-full-access""#))
+        await runtime.stop()
+    }
+
     func testInstalledStableSchemaStillContainsBridgeSurface() async throws {
         let installation: CodexInstallation
         do {
@@ -255,6 +305,7 @@ final class AgentProtocolTests: XCTestCase {
         }
         for method in [
             "item/agentMessage/delta", "item/commandExecution/outputDelta",
+            "item/started", "item/completed", "turn/plan/updated",
             "turn/diff/updated", "thread/tokenUsage/updated", "turn/completed"
         ] {
             XCTAssertTrue(serverNotification.contains("\"\(method)\""), "Missing notification \(method)")
@@ -404,6 +455,17 @@ for line in sys.stdin:
             "futureInitializeField": 1
         }})
     elif method == "initialized":
+        emit({"method": "turn/plan/updated", "params": {
+            "threadId": "thread-1", "turnId": "turn-1",
+            "explanation": "Fixture plan", "plan": [
+                {"step": "Run tests", "status": "inProgress"},
+                {"step": "Report", "status": "pending"}
+            ]
+        }})
+        emit({"method": "item/started", "params": {
+            "threadId": "thread-1", "turnId": "turn-1", "startedAtMs": 1000,
+            "item": {"id": "cmd-1", "type": "commandExecution", "command": "swift test", "status": "inProgress"}
+        }})
         emit({"method": "item/agentMessage/delta", "params": {
             "threadId": "thread-1", "turnId": "turn-1", "itemId": "item-1", "delta": "hello"
         }})
@@ -450,9 +512,12 @@ for line in sys.stdin:
         assert params["limit"] == 25
         emit({"id": request_id, "result": {"data": [thread("thread-1")], "nextCursor": "next-page", "backwardsCursor": None}})
     elif method == "thread/start":
-        assert params["approvalPolicy"] == "on-request"
-        assert params["sandbox"] == "workspace-write"
-        assert params["approvalsReviewer"] == "user"
+        assert params["approvalPolicy"] in ["on-request", "never"]
+        if params["approvalPolicy"] == "never":
+            assert params["sandbox"] == "danger-full-access"
+        else:
+            assert params["sandbox"] == "workspace-write"
+            assert params["approvalsReviewer"] == "user"
         emit({"id": request_id, "result": {"thread": thread("thread-new")}})
     elif method == "thread/resume":
         if MODE == "missingThread" and params["threadId"] == "missing-thread":
@@ -472,11 +537,14 @@ for line in sys.stdin:
     elif method is None and request_id == "future-1":
         assert message["error"]["code"] == -32601
     elif method is None and request_id == "approval-1":
-        assert message["result"] == {"decision": "decline"}
+        assert message["result"]["decision"] in ["decline", "acceptForSession"]
     elif method is None and request_id == "approval-2":
-        assert message["result"] == {"decision": "accept"}
+        assert message["result"]["decision"] in ["accept", "acceptForSession"]
     elif method is None and request_id == "approval-3":
-        assert message["result"] == {"permissions": {"read": ["/tmp/shared"]}, "scope": "session"}
+        assert message["result"] in [
+            {"permissions": {"read": ["/tmp/shared"]}, "scope": "session"},
+            {"permissions": {}, "scope": "turn"}
+        ]
     else:
         emit({"id": request_id, "error": {"code": -32601, "message": "fixture does not implement request"}})
 """#

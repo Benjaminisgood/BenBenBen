@@ -116,6 +116,94 @@ struct AgentSentTurn: Sendable, Equatable {
     let turn: AgentTurn
 }
 
+enum AgentTaskExecutionMode: String, CaseIterable, Identifiable, Sendable {
+    case askMe
+    case autoReview
+    case fullAccess
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .askMe: return "先问我"
+        case .autoReview: return "自动判断"
+        case .fullAccess: return "完全自动"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .askMe: return "风险动作由你确认"
+        case .autoReview: return "由 Codex 自动评估是否允许"
+        case .fullAccess: return "不询问并允许访问本机"
+        }
+    }
+
+    var approvalPolicy: String {
+        switch self {
+        case .askMe, .autoReview: return "on-request"
+        case .fullAccess: return "never"
+        }
+    }
+
+    var sandbox: String {
+        switch self {
+        case .askMe, .autoReview: return "workspace-write"
+        case .fullAccess: return "danger-full-access"
+        }
+    }
+
+    var approvalsReviewer: String {
+        switch self {
+        case .askMe, .fullAccess: return "user"
+        case .autoReview: return "auto_review"
+        }
+    }
+
+    static var persistedDefault: AgentTaskExecutionMode {
+        let raw = UserDefaults.standard.string(forKey: "benbenben.agent.executionMode")
+        return raw.flatMap(AgentTaskExecutionMode.init(rawValue:)) ?? .askMe
+    }
+}
+
+struct AgentTurnStartOptions: Sendable, Equatable {
+    var approvalPolicy: String?
+    var sandbox: String?
+    var approvalsReviewer: String?
+
+    init(executionMode: AgentTaskExecutionMode? = nil) {
+        approvalPolicy = executionMode?.approvalPolicy
+        sandbox = executionMode?.sandbox
+        approvalsReviewer = executionMode?.approvalsReviewer
+    }
+}
+
+struct AgentPlanStep: Sendable, Equatable, Identifiable {
+    let id: String
+    let step: String
+    let status: String
+}
+
+enum AgentTaskActivityKind: String, Sendable, Equatable {
+    case lifecycle
+    case command
+    case fileChange
+    case tool
+    case reasoning
+    case message
+    case approval
+    case guidance
+}
+
+struct AgentTaskActivity: Sendable, Equatable, Identifiable {
+    let id: String
+    let kind: AgentTaskActivityKind
+    let title: String
+    let detail: String?
+    let status: String
+    let updatedAt: Date
+}
+
 struct AgentTokenUsage: Sendable, Equatable {
     struct Breakdown: Sendable, Equatable {
         let totalTokens: Int64
@@ -190,6 +278,8 @@ enum AgentEvent: Sendable, Equatable {
     case commandOutputDelta(context: AgentEventContext, delta: String)
     case fileChangeOutputDelta(context: AgentEventContext, delta: String)
     case diffUpdated(context: AgentEventContext, diff: String)
+    case planUpdated(threadID: String, turnID: String, steps: [AgentPlanStep], explanation: String?)
+    case taskActivityUpdated(threadID: String, turnID: String, activity: AgentTaskActivity)
     case tokenUsageUpdated(threadID: String, turnID: String, usage: AgentTokenUsage)
     case turnStarted(threadID: String, turn: AgentTurn)
     case turnCompleted(threadID: String, turn: AgentTurn)
@@ -254,14 +344,26 @@ struct AgentThreadStartOptions: Sendable, Equatable {
         ephemeral: Bool = false,
         approvalPolicy: String = "on-request",
         sandbox: String = "workspace-write",
-        approvalsReviewer: String = "user"
+        approvalsReviewer: String = "user",
+        executionMode: AgentTaskExecutionMode? = nil
     ) {
         self.cwd = cwd
         self.model = model
         self.ephemeral = ephemeral
-        self.approvalPolicy = approvalPolicy
-        self.sandbox = sandbox
-        self.approvalsReviewer = approvalsReviewer
+        self.approvalPolicy = executionMode?.approvalPolicy ?? approvalPolicy
+        self.sandbox = executionMode?.sandbox ?? sandbox
+        self.approvalsReviewer = executionMode?.approvalsReviewer ?? approvalsReviewer
+    }
+
+    var executionMode: AgentTaskExecutionMode {
+        if approvalPolicy == AgentTaskExecutionMode.fullAccess.approvalPolicy,
+           sandbox == AgentTaskExecutionMode.fullAccess.sandbox {
+            return .fullAccess
+        }
+        if approvalsReviewer == AgentTaskExecutionMode.autoReview.approvalsReviewer {
+            return .autoReview
+        }
+        return .askMe
     }
 
     var json: AgentJSON {
