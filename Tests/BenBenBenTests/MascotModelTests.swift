@@ -61,18 +61,14 @@ final class MascotModelTests: XCTestCase {
         XCTAssertEqual(model.presentedState, .walkLeft)
     }
 
-    func testCollapsedDragonIgnoresManualAction() {
+    func testDragonClickDoesNotWakeCollapsedDragon() {
         let model = MascotModel()
-        let revision = model.presentationRevision
 
         model.cycleRestingAction()
 
         XCTAssertFalse(model.isAwake)
         XCTAssertEqual(model.state, .idle)
-        XCTAssertEqual(model.presentedState, .idle)
-        XCTAssertEqual(model.presentationRevision, revision)
-        XCTAssertEqual(model.compactHomeScene, .tucked)
-        XCTAssertNil(model.compactHomeMessage)
+        XCTAssertEqual(model.presentedState, .cameraReady)
     }
 
     func testDragonClickDoesNotOverrideBusinessState() {

@@ -15,7 +15,6 @@
 - 个人知识与任务：索引 `~/keyoti` 中的 Markdown、Shell、Python、AppleScript 和 Jobs；识别 Markdown checkbox、`TODO:`、`待完成:`、日期与生活/学习/工作标签。
 - 兼容底座：原有 MarkdownEngine、文件锁、Conda/Python、Terminal 和 `launchd` 适配器继续保留，百炼 API 只作为旧版备选。
 - Ben龙刘海伙伴：业务状态和唤醒态优先；只有藏在刘海后且没有任务时，才会拍照、散步、喝茶、发呆、休息、阅读、听歌、浇花等自己玩，无刘海屏幕回退为顶部浮动入口。
-- 折叠刘海透明舞台：黑色刘海是 Ben龙 的家，角色会随机跨出窗口跳到桌面、扔星星、冒泡说话、躲回家里或立体探头；透明伴随层不接收点击，也不会展开刘海或抢走输入焦点。
 - 统一 Runtime：App 内置完整 Benshell，并原子安装到 `~/Library/Application Support/BenBenBen/Runtime/current`。Terminal 与 App 使用同一份 manifest 和命令目录。
 - 稳定 MCP helper：`benbenben-mcp` 提供个人资料搜索、文档读取、近期活动、固定 workflows 与 Jobs 状态；写入和执行动作回到原生审批。
 

@@ -14,8 +14,8 @@ final class NotchCompanionInteractionState: ObservableObject {
     }
 }
 
-/// The notch is a character, not a miniature dashboard. While folded, Ben龙's
-/// home is passive and its transparent companion stage handles ambient play.
+/// The notch is a character, not a miniature dashboard. A click brings Ben龙
+/// closer; shared artifact windows are opened explicitly from the menu bar.
 struct NotchCompanionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -83,7 +83,7 @@ struct NotchCompanionView: View {
         .contentShape(TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ben龙 Codex 伙伴")
-        .accessibilityHint("折叠时恐龙仅自动活动；展开后可单击切换休息动作")
+        .accessibilityHint("单击恐龙切换休息动作；刘海收起与展开使用独立控件")
         .onChange(of: drawerState.isExpanded) { _, expanded in
             if expanded {
                 dragonHasWalkedOut = reduceMotion
@@ -128,9 +128,24 @@ struct NotchCompanionView: View {
     }
 
     private var dragonBehindNotch: some View {
-        Color.clear
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            MascotView(
+                state: mascotModel.presentedState,
+                size: min(82, layout.compactSize.height * 1.18),
+                revision: mascotModel.presentationRevision
+            )
+            .offset(y: 24)
+            .contentShape(Rectangle())
+            .gesture(mascotTapGesture)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Ben龙休息动作")
+            .accessibilityHint("单击切换休息动作")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { handleMascotClick() }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 
     private var conversationStage: some View {

@@ -61,12 +61,10 @@ final class NotchPanelController: NSObject {
     )
     private let compactPanel: NotchPanel
     private let expandedPanel: NotchPanel
-    private let compactEffectPanel: NotchPanel
     let agentContext: NotchAgentContext
     private let companionInteractionState = NotchCompanionInteractionState()
     private var hostingView: NSHostingView<NotchCompanionView>?
     private var compactHostingView: NSHostingView<NotchCompanionView>?
-    private var compactEffectHostingView: NSHostingView<CompactDragonStageView>?
     private var mousePollingTimer: Timer?
     private var globalMouseDragMonitor: Any?
     private var globalMouseUpMonitor: Any?
@@ -110,18 +108,10 @@ final class NotchPanelController: NSObject {
             backing: .buffered,
             defer: false
         )
-        compactEffectPanel = NotchPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
 
         super.init()
         configurePanel(compactPanel)
         configurePanel(expandedPanel)
-        configurePanel(compactEffectPanel)
-        compactEffectPanel.ignoresMouseEvents = true
         rebuildContent()
         startMousePolling()
         observeScreenChanges()
@@ -138,11 +128,9 @@ final class NotchPanelController: NSObject {
         drawerState.isExpanded = false
         drawerState.revealProgress = 0
         compactPanel.setFrame(compactFrame(for: layout), display: true)
-        compactEffectPanel.setFrame(compactEffectFrame(for: layout), display: true)
         expandedPanel.setFrame(expandedFrame(for: layout), display: true)
         expandedPanel.orderOut(nil)
         compactPanel.orderFrontRegardless()
-        compactEffectPanel.orderFrontRegardless()
     }
 
     func expand(animated: Bool) {
@@ -166,7 +154,6 @@ final class NotchPanelController: NSObject {
             rebuildContent(layout: layout)
         }
         expandedPanel.setFrame(expandedFrame(for: layout), display: true)
-        compactEffectPanel.orderOut(nil)
         compactPanel.orderOut(nil)
         compactPanel.contentView = nil
         if expandedPanel.contentView == nil, let hostingView {
@@ -206,12 +193,10 @@ final class NotchPanelController: NSObject {
         expandedPanel.contentView = nil
         setDrawerExpanded(false, animated: false)
         compactPanel.setFrame(compactFrame(for: currentLayout()), display: true)
-        compactEffectPanel.setFrame(compactEffectFrame(for: currentLayout()), display: true)
         if compactPanel.contentView == nil, let compactHostingView {
             compactPanel.contentView = compactHostingView
         }
         compactPanel.orderFrontRegardless()
-        compactEffectPanel.orderFrontRegardless()
     }
 
     func showAgent() {
@@ -388,19 +373,9 @@ final class NotchPanelController: NSObject {
             onCollapse: { [weak self] in self?.collapse(animated: true) }
         )
 
-        let effectFrame = compactEffectFrame(for: layout)
-        let effectView = CompactDragonStageView(
-            mascotModel: mascotModel,
-            mascotSize: min(104, layout.compactSize.height * 1.58),
-            canvasSize: effectFrame.size,
-            homeSize: layout.compactSize,
-            physicalNotchSize: targetScreen()?.measuredNotchSize ?? .zero
-        )
-
-        if let hostingView, let compactHostingView, let compactEffectHostingView {
+        if let hostingView, let compactHostingView {
             hostingView.rootView = view
             compactHostingView.rootView = view
-            compactEffectHostingView.rootView = effectView
             return
         }
 
@@ -416,18 +391,10 @@ final class NotchPanelController: NSObject {
 
         let compactHost = makeHost()
         let expandedHost = makeHost()
-        let effectHost = NSHostingView(rootView: effectView)
-        effectHost.sizingOptions = []
-        effectHost.translatesAutoresizingMaskIntoConstraints = true
-        effectHost.autoresizingMask = [.width, .height]
-        effectHost.wantsLayer = true
-        effectHost.layer?.backgroundColor = NSColor.clear.cgColor
         compactPanel.contentView = compactHost
         expandedPanel.contentView = expandedHost
-        compactEffectPanel.contentView = effectHost
         compactHostingView = compactHost
         hostingView = expandedHost
-        compactEffectHostingView = effectHost
     }
 
     private func setDrawerExpanded(_ expanded: Bool, animated: Bool) {
@@ -594,7 +561,6 @@ final class NotchPanelController: NSObject {
         cancelCollapse()
         rebuildContent(layout: layout)
         compactPanel.setFrame(compactFrame(for: layout), display: true)
-        compactEffectPanel.setFrame(compactEffectFrame(for: layout), display: true)
         expandedPanel.setFrame(expandedFrame(for: layout), display: true)
     }
 
@@ -717,18 +683,6 @@ final class NotchPanelController: NSObject {
         let topY = screenFrame.maxY + layout.expandedTopOffset
         let size = isTaskDetailVisible ? layout.expandedDetailSize : layout.expandedSize
         return frame(for: size, topY: topY, in: screenFrame)
-    }
-
-    private func compactEffectFrame(for layout: NotchLayout) -> NSRect {
-        let screen = targetScreen()
-        let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let width = min(max(layout.compactSize.width * 2.2, 520), screenFrame.width)
-        let height = min(max(layout.compactSize.height + 220, 280), screenFrame.height)
-        return frame(
-            for: NSSize(width: width, height: height),
-            topY: screenFrame.maxY + layout.compactTopOffset,
-            in: screenFrame
-        )
     }
 
     private func frame(for size: NSSize, topY: CGFloat, in screenFrame: NSRect) -> NSRect {
