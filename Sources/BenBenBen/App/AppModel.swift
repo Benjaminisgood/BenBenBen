@@ -52,6 +52,11 @@ struct AgentConversationEntry: Identifiable, Sendable {
     let text: String
 }
 
+enum AgentPromptSubmissionResult: Equatable, Sendable {
+    case accepted(threadID: String)
+    case rejected(message: String)
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
@@ -82,7 +87,14 @@ final class AppModel: ObservableObject {
         agentContext: agentContext,
         screenContext: screenContext,
         onPrompt: { [weak self] prompt, focusedFile in
-            self?.sendQuickPrompt(prompt, focusedFile: focusedFile)
+            guard let self else {
+                return .rejected(message: "BenBenBen 已关闭")
+            }
+            return await self.submitQuickPrompt(
+                prompt,
+                focusedFile: focusedFile,
+                forceNewThread: true
+            )
         }
     )
     private lazy var notchController = NotchPanelController(
@@ -216,61 +228,87 @@ final class AppModel: ObservableObject {
         forceNewThread: Bool = false
     ) {
         Task {
-            if agentStore == nil {
-                await bootstrapAgent()
-            }
-            guard let store = agentStore else { return }
-
-            var threadID = forceNewThread ? nil : store.selectedThreadID
-            if threadID == nil {
-                let options = AgentThreadStartOptions(
-                    cwd: personalWorkspace.registry.root.path,
-                    executionMode: store.defaultExecutionMode
-                )
-                threadID = await store.createThread(options: options)?.id
-            }
-            guard let threadID else { return }
-
-            let fallbackOptions = AgentThreadStartOptions(
-                cwd: personalWorkspace.registry.root.path,
-                executionMode: store.executionMode(for: threadID)
-            )
-            let artifactBaseline = await Task.detached(priority: .utility) {
-                AgentArtifactSnapshot.capture()
-            }.value
-            let screenshotURL: URL?
-            if let screenImageURL {
-                screenshotURL = screenImageURL
-            } else {
-                screenshotURL = await screenContext.captureLatest()
-            }
-            let governedPrompt = AgentOperatingContract.prompt(
+            _ = await submitQuickPrompt(
                 prompt,
+                voiceInitiated: voiceInitiated,
                 focusedFile: focusedFile,
-                includesScreen: screenshotURL != nil
+                screenImageURL: screenImageURL,
+                proactive: proactive,
+                forceNewThread: forceNewThread
             )
-            if let sent = await store.send(
-                governedPrompt,
-                to: threadID,
-                localImagePath: screenshotURL?.path,
-                fallbackOptions: fallbackOptions
-            ) {
-                store.selectedThreadID = sent.threadID
-                store.setTaskDisplayPrompt(prompt, for: sent.threadID)
-                let turnKey = Self.turnKey(threadID: sent.threadID, turnID: sent.turn.id)
-                artifactBaselines[turnKey] = artifactBaseline
-                if proactive {
-                    proactiveAgentTurnIDs.insert(turnKey)
-                }
-                if voiceInitiated {
-                    voiceReplyThreadID = sent.threadID
-                    voiceInteraction.speakVoiceInitiatedReply("收到，我开始处理这个任务。")
-                }
-                agentConversation[sent.threadID, default: []].append(
-                    AgentConversationEntry(role: .user, text: prompt)
-                )
-            }
         }
+    }
+
+    @discardableResult
+    func submitQuickPrompt(
+        _ prompt: String,
+        voiceInitiated: Bool = false,
+        focusedFile: URL? = nil,
+        screenImageURL: URL? = nil,
+        proactive: Bool = false,
+        forceNewThread: Bool = false
+    ) async -> AgentPromptSubmissionResult {
+        if agentStore == nil {
+            await bootstrapAgent()
+        }
+        guard let store = agentStore else {
+            return .rejected(message: "Codex 尚未连接")
+        }
+
+        var threadID = forceNewThread ? nil : store.selectedThreadID
+        if threadID == nil {
+            let options = AgentThreadStartOptions(
+                cwd: personalWorkspace.registry.root.path,
+                executionMode: store.defaultExecutionMode
+            )
+            threadID = await store.createThread(options: options)?.id
+        }
+        guard let threadID else {
+            return .rejected(message: store.lastError ?? "无法创建 Codex 任务")
+        }
+
+        let fallbackOptions = AgentThreadStartOptions(
+            cwd: personalWorkspace.registry.root.path,
+            executionMode: store.executionMode(for: threadID)
+        )
+        let artifactBaseline = await Task.detached(priority: .utility) {
+            AgentArtifactSnapshot.capture()
+        }.value
+        let screenshotURL: URL?
+        if let screenImageURL {
+            screenshotURL = screenImageURL
+        } else {
+            screenshotURL = await screenContext.captureLatest()
+        }
+        let governedPrompt = AgentOperatingContract.prompt(
+            prompt,
+            focusedFile: focusedFile,
+            includesScreen: screenshotURL != nil
+        )
+        guard let sent = await store.send(
+            governedPrompt,
+            to: threadID,
+            localImagePath: screenshotURL?.path,
+            fallbackOptions: fallbackOptions
+        ) else {
+            return .rejected(message: store.lastError ?? "Codex 没有接受这个任务")
+        }
+
+        store.selectedThreadID = sent.threadID
+        store.setTaskDisplayPrompt(prompt, for: sent.threadID)
+        let turnKey = Self.turnKey(threadID: sent.threadID, turnID: sent.turn.id)
+        artifactBaselines[turnKey] = artifactBaseline
+        if proactive {
+            proactiveAgentTurnIDs.insert(turnKey)
+        }
+        if voiceInitiated {
+            voiceReplyThreadID = sent.threadID
+            voiceInteraction.speakVoiceInitiatedReply("收到，我开始处理这个任务。")
+        }
+        agentConversation[sent.threadID, default: []].append(
+            AgentConversationEntry(role: .user, text: prompt)
+        )
+        return .accepted(threadID: sent.threadID)
     }
 
     func sendAgentComposer(_ prompt: String, voiceInitiated: Bool = false) {

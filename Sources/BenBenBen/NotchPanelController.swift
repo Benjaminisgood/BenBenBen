@@ -75,6 +75,8 @@ final class NotchPanelController: NSObject {
     private var voiceHoldTask: DispatchWorkItem?
     private var didStartVoiceHold = false
     private var suppressNextHotClick = false
+    private var isTaskDetailVisible = false
+    private var detailResizeTask: DispatchWorkItem?
     private let onSendPrompt: (String) -> Void
     private let onStartNewTask: (String) -> Void
 
@@ -369,6 +371,9 @@ final class NotchPanelController: NSObject {
             onStartNewTask: onStartNewTask,
             onExpand: { [weak self] in self?.expand(animated: true) },
             onMascotAction: { [weak self] in self?.handleMascotAction() },
+            onTaskDetailVisibilityChanged: { [weak self] visible in
+                self?.setTaskDetailVisible(visible)
+            },
             onOpenSettings: { [weak self] in self?.openSettingsPopover() },
             onCollapse: { [weak self] in self?.collapse(animated: true) }
         )
@@ -412,6 +417,28 @@ final class NotchPanelController: NSObject {
             drawerState.isExpanded = expanded
             drawerState.revealProgress = expanded ? 1 : 0
         }
+    }
+
+    private func setTaskDetailVisible(_ visible: Bool) {
+        guard isTaskDetailVisible != visible else { return }
+        isTaskDetailVisible = visible
+        detailResizeTask?.cancel()
+
+        let targetFrame = expandedFrame(for: currentLayout())
+        let shouldAnimate = isExpanded && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        expandedPanel.setFrame(targetFrame, display: true, animate: shouldAnimate)
+
+        guard !visible else { return }
+        let task = DispatchWorkItem { [weak self] in
+            guard let self, !self.isTaskDetailVisible else { return }
+            self.expandedPanel.setFrame(
+                self.expandedFrame(for: self.currentLayout()),
+                display: true,
+                animate: false
+            )
+        }
+        detailResizeTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32, execute: task)
     }
 
     private func startMousePolling() {
@@ -658,7 +685,8 @@ final class NotchPanelController: NSObject {
         let screen = targetScreen()
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let topY = screenFrame.maxY + layout.expandedTopOffset
-        return frame(for: layout.expandedSize, topY: topY, in: screenFrame)
+        let size = isTaskDetailVisible ? layout.expandedDetailSize : layout.expandedSize
+        return frame(for: size, topY: topY, in: screenFrame)
     }
 
     private func frame(for size: NSSize, topY: CGFloat, in screenFrame: NSRect) -> NSRect {

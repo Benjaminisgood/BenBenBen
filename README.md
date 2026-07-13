@@ -9,7 +9,7 @@
 ## 核心能力
 
 - 龙即主界面：刘海 `NSPanel` 只有藏身态和近身对话态；旧的写死功能按钮不再占据展开面板。
-- 五类共同窗口：HTML / Python / Markdown / Shell 与 AppleScript / launchd plist 都直接观察 `~/keyoti` 文件；Codex 或用户改动后自动刷新。
+- 五类共同窗口：HTML / Python / Markdown / Shell 与 AppleScript / launchd plist 都直接观察 `~/keyoti` 文件；Codex 或用户改动后自动刷新，每次 composer 提交都会创建一个可并行运行的独立任务。
 - Codex 主智能：通过外部 `codex app-server --stdio` 管理 ChatGPT 登录、线程、流式事件、图像输入、Diff、审批和中断；不复制 Codex 的 `auth.json`。
 - 可见屏幕上下文：用户显式打开后，每三秒采样屏幕；显著变化时最多每十五秒把当前画面作为 `localImage` 交给 Codex 反应，可随时停止。
 - 个人知识与任务：索引 `~/keyoti` 中的 Markdown、Shell、Python、AppleScript 和 Jobs；识别 Markdown checkbox、`TODO:`、`待完成:`、日期与生活/学习/工作标签。

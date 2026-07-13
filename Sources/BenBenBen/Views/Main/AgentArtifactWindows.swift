@@ -199,12 +199,12 @@ final class AgentArtifactWindowController {
     private var stores: [AgentArtifactKind: AgentArtifactStore] = [:]
     private let agentContext: NotchAgentContext
     private let screenContext: ScreenContextMonitor
-    private let onPrompt: (String, URL?) -> Void
+    private let onPrompt: (String, URL?) async -> AgentPromptSubmissionResult
 
     init(
         agentContext: NotchAgentContext,
         screenContext: ScreenContextMonitor,
-        onPrompt: @escaping (String, URL?) -> Void
+        onPrompt: @escaping (String, URL?) async -> AgentPromptSubmissionResult
     ) {
         self.agentContext = agentContext
         self.screenContext = screenContext
@@ -285,9 +285,12 @@ private struct AgentArtifactWindowView: View {
     @ObservedObject var store: AgentArtifactStore
     @ObservedObject var agentContext: NotchAgentContext
     @ObservedObject var screenContext: ScreenContextMonitor
-    let onPrompt: (String, URL?) -> Void
+    let onPrompt: (String, URL?) async -> AgentPromptSubmissionResult
 
     @State private var draft = ""
+    @State private var isSubmitting = false
+    @State private var submissionMessage: String?
+    @State private var submissionFailed = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -405,15 +408,31 @@ private struct AgentArtifactWindowView: View {
     }
 
     private var composer: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-            TextField("告诉 Ben龙 要在这个共同窗口完成什么…", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...3)
-                .onSubmit(send)
-            Button("交给 Codex", systemImage: "arrow.up") { send() }
-                .buttonStyle(.borderedProminent)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                if isSubmitting {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "sparkles")
+                }
+                TextField("告诉 Ben龙 要在这个共同窗口完成什么…", text: $draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...3)
+                    .disabled(isSubmitting)
+                    .onSubmit(send)
+                Button(isSubmitting ? "提交中" : "交给 Codex", systemImage: "arrow.up") { send() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        isSubmitting
+                            || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+            }
+            if let submissionMessage {
+                Text(submissionMessage)
+                    .font(.caption2)
+                    .foregroundStyle(submissionFailed ? Color.red : Color.green)
+                    .lineLimit(2)
+            }
         }
         .padding(10)
     }
@@ -426,10 +445,26 @@ private struct AgentArtifactWindowView: View {
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isSubmitting else { return }
         store.saveNow()
-        draft = ""
-        onPrompt("在 \(store.kind.title) 共同窗口中：\(text)", store.selectedURL)
+        isSubmitting = true
+        submissionFailed = false
+        submissionMessage = "正在创建独立任务…"
+        let focusedFile = store.selectedURL
+
+        Task { @MainActor in
+            let result = await onPrompt("在 \(store.kind.title) 共同窗口中：\(text)", focusedFile)
+            isSubmitting = false
+            switch result {
+            case .accepted:
+                draft = ""
+                submissionFailed = false
+                submissionMessage = "已交给 Codex，正在作为独立任务运行"
+            case .rejected(let message):
+                submissionFailed = true
+                submissionMessage = message
+            }
+        }
     }
 
     private func relativePath(_ url: URL) -> String {

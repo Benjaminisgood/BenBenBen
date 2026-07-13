@@ -5,6 +5,7 @@ struct NotchLayout: Equatable {
     let notchSize: NSSize
     let compactSize: NSSize
     let expandedSize: NSSize
+    let expandedDetailSize: NSSize
     let compactTopOffset: CGFloat
     let expandedTopOffset: CGFloat
 }
@@ -101,12 +102,14 @@ enum NotchGeometry {
         let compactHeight = min(compactTargetHeight, availableHeight)
 
         let expandedWidth = min(560, availableWidth)
+        let expandedDetailWidth = min(820, availableWidth)
         let expandedHeight = min(470, availableHeight)
 
         return NotchLayout(
             notchSize: notch,
             compactSize: NSSize(width: compactWidth, height: compactHeight),
             expandedSize: NSSize(width: expandedWidth, height: expandedHeight),
+            expandedDetailSize: NSSize(width: expandedDetailWidth, height: expandedHeight),
             compactTopOffset: 0,
             expandedTopOffset: 0
         )

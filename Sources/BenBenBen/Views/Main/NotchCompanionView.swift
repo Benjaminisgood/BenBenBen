@@ -57,6 +57,7 @@ struct NotchCompanionView: View {
     let onStartNewTask: (String) -> Void
     let onExpand: () -> Void
     let onMascotAction: () -> Void
+    let onTaskDetailVisibilityChanged: (Bool) -> Void
     let onOpenSettings: () -> Void
     let onCollapse: () -> Void
 
@@ -109,6 +110,9 @@ struct NotchCompanionView: View {
             if let detailThreadID, !runningIDs.contains(detailThreadID) {
                 self.detailThreadID = nil
             }
+        }
+        .onChange(of: detailThreadID) { _, threadID in
+            onTaskDetailVisibilityChanged(threadID != nil)
         }
     }
 
