@@ -15,7 +15,7 @@ final class NotchGeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(layout.notchSize, measuredNotch)
-        XCTAssertEqual(layout.panelSize, NSSize(width: 186, height: 140))
+        XCTAssertEqual(layout.panelSize, NSSize(width: 184, height: 140))
         XCTAssertLessThanOrEqual(layout.panelSize.width, visibleFrame.width)
         XCTAssertLessThanOrEqual(layout.panelSize.height, visibleFrame.height)
         XCTAssertEqual(layout.topOffset, 0)
@@ -32,7 +32,7 @@ final class NotchGeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(layout.notchSize, NSSize(width: 210, height: 32))
-        XCTAssertEqual(layout.panelSize, NSSize(width: 186, height: 140))
+        XCTAssertEqual(layout.panelSize, NSSize(width: 184, height: 140))
     }
 
     func testNarrowVisibleFrameShrinksFixedPanelInsideAvailableArea() {
@@ -92,7 +92,7 @@ final class NotchGeometryTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = NotchPreferences(defaults: defaults)
-        XCTAssertEqual(preferences.physicalWidth, 186)
+        XCTAssertEqual(preferences.physicalWidth, 184)
         XCTAssertEqual(preferences.physicalHeight, 32)
 
         preferences.physicalWidth = 192

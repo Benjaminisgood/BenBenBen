@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class NotchPreferences: ObservableObject {
-    static let defaultPhysicalWidth = 186.0
+    static let defaultPhysicalWidth = 184.0
     static let defaultPhysicalHeight = 32.0
     static let physicalWidthRange = 140.0...260.0
     static let physicalHeightRange = 18.0...80.0

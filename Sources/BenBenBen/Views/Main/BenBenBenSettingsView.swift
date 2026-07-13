@@ -63,7 +63,7 @@ struct BenBenBenSettingsView: View {
                         Text("\(Int(notchPreferences.physicalHeight + NotchGeometry.companionContentHeight)) pt")
                             .monospacedDigit()
                     }
-                    Button("恢复默认物理刘海 186 × 32") {
+                    Button("恢复默认物理刘海 184 × 32") {
                         notchPreferences.restoreDefaults()
                     }
                     Text("面板宽度跟随物理刘海宽度；总高自动等于物理刘海高度加 108 pt 固定龙活动区。调整物理高度只会整体下移活动区，不会压缩龙。")

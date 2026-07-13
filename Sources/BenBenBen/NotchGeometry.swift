@@ -58,7 +58,7 @@ extension NSScreen {
 enum NotchGeometry {
     private static let fallbackScreenFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
     private static let fallbackNotchSize = NSSize(width: 210, height: 32)
-    static let defaultPanelSize = NSSize(width: 186, height: 140)
+    static let defaultPanelSize = NSSize(width: 184, height: 140)
     static let companionContentHeight: CGFloat = 108
     private static let horizontalMargin: CGFloat = 16
     private static let verticalMargin: CGFloat = 16
