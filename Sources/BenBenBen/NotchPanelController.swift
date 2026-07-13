@@ -124,6 +124,7 @@ final class NotchPanelController: NSObject {
         let layout = currentLayout()
         rebuildContent(layout: layout)
         isExpanded = false
+        mascotModel.setAwake(false)
         drawerState.isExpanded = false
         drawerState.revealProgress = 0
         compactPanel.setFrame(compactFrame(for: layout), display: true)
@@ -403,6 +404,7 @@ final class NotchPanelController: NSObject {
     }
 
     private func setDrawerExpanded(_ expanded: Bool, animated: Bool) {
+        mascotModel.setAwake(expanded)
         guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
             drawerState.isExpanded = expanded
             drawerState.revealProgress = expanded ? 1 : 0

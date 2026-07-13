@@ -22,12 +22,23 @@ struct MascotView: View {
             }
         }
         .frame(width: size, height: size)
-        .scaleEffect(y: reduceMotion ? 1 : (motionPhase ? 1.025 : 0.985), anchor: .bottom)
-        .offset(y: !reduceMotion && state == .working && motionPhase ? -1.5 : 0)
+        .scaleEffect(
+            x: reduceMotion ? 1 : state.motionScaleX(phase: motionPhase),
+            y: reduceMotion ? 1 : state.motionScaleY(phase: motionPhase),
+            anchor: .bottom
+        )
+        .rotationEffect(
+            .degrees(reduceMotion ? 0 : state.motionRotation(phase: motionPhase)),
+            anchor: .bottom
+        )
+        .offset(
+            x: reduceMotion ? 0 : state.motionOffsetX(phase: motionPhase),
+            y: reduceMotion ? 0 : state.motionOffsetY(phase: motionPhase)
+        )
         .animation(
             reduceMotion
                 ? nil
-                : .easeInOut(duration: state == .working ? 0.42 : 1.7)
+                : .easeInOut(duration: state.motionDuration)
                     .repeatForever(autoreverses: true),
             value: motionPhase
         )
@@ -55,6 +66,72 @@ private struct MotionTrigger: Equatable {
     let state: MascotState
     let revision: Int
     let reduceMotion: Bool
+}
+
+private extension MascotState {
+    var motionDuration: Double {
+        switch self {
+        case .walkLeft, .walkRight: return 0.22
+        case .cameraShutter: return 0.16
+        case .working: return 0.42
+        case .music: return 0.48
+        case .stretch: return 0.70
+        case .rest, .sleep, .cloudWatch, .stargaze: return 2.4
+        case .bubbles: return 1.2
+        default: return 1.7
+        }
+    }
+
+    func motionScaleX(phase: Bool) -> CGFloat {
+        switch self {
+        case .cameraShutter: return phase ? 0.99 : 1.01
+        case .stretch: return phase ? 1.018 : 0.99
+        default: return 1
+        }
+    }
+
+    func motionScaleY(phase: Bool) -> CGFloat {
+        switch self {
+        case .walkLeft, .walkRight: return phase ? 1.018 : 0.982
+        case .stretch: return phase ? 1.045 : 0.985
+        case .rest, .sleep: return phase ? 1.012 : 0.992
+        case .daydream, .cloudWatch, .rain: return phase ? 1 : 0.992
+        default: return phase ? 1.025 : 0.985
+        }
+    }
+
+    func motionRotation(phase: Bool) -> Double {
+        switch self {
+        case .cameraReady: return phase ? 0.45 : -0.45
+        case .cameraShutter: return phase ? -1.2 : 0.4
+        case .teaSip: return phase ? -1.4 : -0.4
+        case .music: return phase ? 1.4 : -1.4
+        case .bubbles: return phase ? 0.8 : -0.8
+        default: return 0
+        }
+    }
+
+    func motionOffsetX(phase: Bool) -> CGFloat {
+        switch self {
+        case .walkLeft: return phase ? -2.6 : 1.0
+        case .walkRight: return phase ? 2.6 : -1.0
+        case .cameraShutter: return phase ? -1.2 : 0
+        case .music: return phase ? 0.8 : -0.8
+        case .bubbles: return phase ? 0.7 : -0.7
+        default: return 0
+        }
+    }
+
+    func motionOffsetY(phase: Bool) -> CGFloat {
+        switch self {
+        case .working: return phase ? -1.5 : 0
+        case .walkLeft, .walkRight: return phase ? -1.4 : 0
+        case .music: return phase ? -1.0 : 0
+        case .stretch: return phase ? -1.8 : 0
+        case .cameraShutter: return phase ? 0.7 : 0
+        default: return 0
+        }
+    }
 }
 
 @MainActor

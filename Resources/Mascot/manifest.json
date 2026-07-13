@@ -1,7 +1,13 @@
 {
-  "schemaVersion": 1,
-  "source": "Resources/DesignSources/ben-dragon-sprite-sheet-transparent.png",
-  "cellSize": 418,
+  "schemaVersion": 2,
+  "sources": [
+    "Resources/DesignSources/ben-dragon-sprite-sheet-transparent.png",
+    "Resources/DesignSources/ben-dragon-ambient-everyday-transparent.png",
+    "Resources/DesignSources/ben-dragon-ambient-hobbies-transparent.png"
+  ],
+  "cellSizes": [
+    418
+  ],
   "states": {
     "logo": {
       "file": "ben-dragon-logo.png",
@@ -162,6 +168,330 @@
       "opaqueBoundsSize": [
         320,
         265
+      ],
+      "magentaPixels": 0
+    },
+    "cameraReady": {
+      "file": "ben-dragon-cameraReady.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        104,
+        80,
+        370,
+        386
+      ],
+      "opaqueBoundsSize": [
+        266,
+        306
+      ],
+      "magentaPixels": 0
+    },
+    "cameraShutter": {
+      "file": "ben-dragon-cameraShutter.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        71,
+        80,
+        344,
+        386
+      ],
+      "opaqueBoundsSize": [
+        273,
+        306
+      ],
+      "magentaPixels": 0
+    },
+    "walkLeft": {
+      "file": "ben-dragon-walkLeft.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        61,
+        79,
+        320,
+        388
+      ],
+      "opaqueBoundsSize": [
+        259,
+        309
+      ],
+      "magentaPixels": 0
+    },
+    "walkRight": {
+      "file": "ben-dragon-walkRight.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        121,
+        40,
+        374,
+        349
+      ],
+      "opaqueBoundsSize": [
+        253,
+        309
+      ],
+      "magentaPixels": 0
+    },
+    "teaHold": {
+      "file": "ben-dragon-teaHold.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        88,
+        41,
+        340,
+        351
+      ],
+      "opaqueBoundsSize": [
+        252,
+        310
+      ],
+      "magentaPixels": 0
+    },
+    "teaSip": {
+      "file": "ben-dragon-teaSip.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        57,
+        49,
+        306,
+        351
+      ],
+      "opaqueBoundsSize": [
+        249,
+        302
+      ],
+      "magentaPixels": 0
+    },
+    "daydream": {
+      "file": "ben-dragon-daydream.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        104,
+        1,
+        384,
+        311
+      ],
+      "opaqueBoundsSize": [
+        280,
+        310
+      ],
+      "magentaPixels": 0
+    },
+    "cloudWatch": {
+      "file": "ben-dragon-cloudWatch.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        51,
+        7,
+        339,
+        314
+      ],
+      "opaqueBoundsSize": [
+        288,
+        307
+      ],
+      "magentaPixels": 0
+    },
+    "rest": {
+      "file": "ben-dragon-rest.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        38,
+        72,
+        337,
+        316
+      ],
+      "opaqueBoundsSize": [
+        299,
+        244
+      ],
+      "magentaPixels": 0
+    },
+    "read": {
+      "file": "ben-dragon-read.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        99,
+        86,
+        364,
+        387
+      ],
+      "opaqueBoundsSize": [
+        265,
+        301
+      ],
+      "magentaPixels": 0
+    },
+    "music": {
+      "file": "ben-dragon-music.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        45,
+        96,
+        335,
+        391
+      ],
+      "opaqueBoundsSize": [
+        290,
+        295
+      ],
+      "magentaPixels": 0
+    },
+    "waterFlower": {
+      "file": "ben-dragon-waterFlower.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        4,
+        95,
+        344,
+        389
+      ],
+      "opaqueBoundsSize": [
+        340,
+        294
+      ],
+      "magentaPixels": 0
+    },
+    "snack": {
+      "file": "ben-dragon-snack.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        103,
+        66,
+        356,
+        355
+      ],
+      "opaqueBoundsSize": [
+        253,
+        289
+      ],
+      "magentaPixels": 0
+    },
+    "stretch": {
+      "file": "ben-dragon-stretch.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        56,
+        64,
+        320,
+        355
+      ],
+      "opaqueBoundsSize": [
+        264,
+        291
+      ],
+      "magentaPixels": 0
+    },
+    "sketch": {
+      "file": "ben-dragon-sketch.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        30,
+        77,
+        314,
+        355
+      ],
+      "opaqueBoundsSize": [
+        284,
+        278
+      ],
+      "magentaPixels": 0
+    },
+    "rain": {
+      "file": "ben-dragon-rain.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        88,
+        0,
+        385,
+        309
+      ],
+      "opaqueBoundsSize": [
+        297,
+        309
+      ],
+      "magentaPixels": 0
+    },
+    "stargaze": {
+      "file": "ben-dragon-stargaze.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        50,
+        38,
+        355,
+        308
+      ],
+      "opaqueBoundsSize": [
+        305,
+        270
+      ],
+      "magentaPixels": 0
+    },
+    "bubbles": {
+      "file": "ben-dragon-bubbles.png",
+      "size": [
+        418,
+        418
+      ],
+      "alphaBounds": [
+        14,
+        45,
+        326,
+        313
+      ],
+      "opaqueBoundsSize": [
+        312,
+        268
       ],
       "magentaPixels": 0
     }

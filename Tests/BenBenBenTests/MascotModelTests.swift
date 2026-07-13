@@ -14,4 +14,33 @@ final class MascotModelTests: XCTestCase {
         XCTAssertEqual(model.presentedState, .listening)
         XCTAssertEqual(model.presentationRevision, firstRevision)
     }
+
+    func testWakingDragonStopsAmbientPlayUntilCollapsedAgain() {
+        let model = MascotModel()
+
+        XCTAssertTrue(model.isAmbientBehaviorRunning)
+
+        model.setAwake(true)
+
+        XCTAssertTrue(model.isAwake)
+        XCTAssertFalse(model.isAmbientBehaviorRunning)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertEqual(model.presentedState, .idle)
+
+        model.setAwake(false)
+
+        XCTAssertFalse(model.isAwake)
+        XCTAssertTrue(model.isAmbientBehaviorRunning)
+    }
+
+    func testAmbientOnlyPosesAreNotBusinessStates() {
+        let ambientPoses = MascotState.allCases.filter(\.isAmbientOnly)
+
+        XCTAssertEqual(ambientPoses.count, 18)
+        XCTAssertFalse(MascotState.idle.isAmbientOnly)
+        XCTAssertFalse(MascotState.working.isAmbientOnly)
+        XCTAssertTrue(MascotState.cameraReady.isAmbientOnly)
+        XCTAssertTrue(MascotState.teaSip.isAmbientOnly)
+        XCTAssertTrue(MascotState.stargaze.isAmbientOnly)
+    }
 }

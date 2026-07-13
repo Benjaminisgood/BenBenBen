@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Slice the approved Ben Dragon sheet and derive the macOS app icon."""
+"""Slice the approved Ben Dragon sheets and derive the macOS app icon."""
 
 from __future__ import annotations
 
@@ -11,20 +11,53 @@ from PIL import Image, ImageDraw
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "Resources/DesignSources/ben-dragon-sprite-sheet-transparent.png"
+PRIMARY_SOURCE = ROOT / "Resources/DesignSources/ben-dragon-sprite-sheet-transparent.png"
 MASCOT_DIR = ROOT / "Resources/Mascot"
 APP_ICON = ROOT / "Resources/AppIcon.png"
 
-CELLS = [
-    "logo",
-    "idle",
-    "listening",
-    "thinking",
-    "working",
-    "waitingApproval",
-    "success",
-    "error",
-    "sleep",
+SHEETS = [
+    (
+        PRIMARY_SOURCE,
+        [
+            "logo",
+            "idle",
+            "listening",
+            "thinking",
+            "working",
+            "waitingApproval",
+            "success",
+            "error",
+            "sleep",
+        ],
+    ),
+    (
+        ROOT / "Resources/DesignSources/ben-dragon-ambient-everyday-transparent.png",
+        [
+            "cameraReady",
+            "cameraShutter",
+            "walkLeft",
+            "walkRight",
+            "teaHold",
+            "teaSip",
+            "daydream",
+            "cloudWatch",
+            "rest",
+        ],
+    ),
+    (
+        ROOT / "Resources/DesignSources/ben-dragon-ambient-hobbies-transparent.png",
+        [
+            "read",
+            "music",
+            "waterFlower",
+            "snack",
+            "stretch",
+            "sketch",
+            "rain",
+            "stargaze",
+            "bubbles",
+        ],
+    ),
 ]
 
 
@@ -38,20 +71,23 @@ def alpha_bounds(image: Image.Image) -> Tuple[int, int, int, int]:
 
 def magenta_pixel_count(image: Image.Image) -> int:
     count = 0
-    for red, green, blue, alpha in image.getdata():
+    pixels = image.get_flattened_data() if hasattr(image, "get_flattened_data") else image.getdata()
+    for red, green, blue, alpha in pixels:
         if alpha > 8 and red > 220 and blue > 180 and green < 90:
             count += 1
     return count
 
 
-def slice_sheet(sheet: Image.Image) -> Dict[str, Dict[str, object]]:
+def slice_sheet(sheet: Image.Image, cells: list[str]) -> Dict[str, Dict[str, object]]:
     if sheet.width != sheet.height or sheet.width % 3:
         raise RuntimeError("sprite sheet must be a square 3x3 grid")
+    if len(cells) != 9:
+        raise RuntimeError("sprite sheet must declare exactly 9 cells")
     cell_size = sheet.width // 3
     MASCOT_DIR.mkdir(parents=True, exist_ok=True)
     report: Dict[str, Dict[str, object]] = {}
 
-    for index, name in enumerate(CELLS):
+    for index, name in enumerate(cells):
         column = index % 3
         row = index // 3
         cell = sheet.crop((
@@ -107,15 +143,20 @@ def make_app_icon(logo_cell: Image.Image) -> None:
 
 
 def main() -> None:
-    sheet = Image.open(SOURCE).convert("RGBA")
-    report = slice_sheet(sheet)
+    report: Dict[str, Dict[str, object]] = {}
+    cell_sizes = set()
+    for source, cells in SHEETS:
+        sheet = Image.open(source).convert("RGBA")
+        cell_sizes.add(sheet.width // 3)
+        report.update(slice_sheet(sheet, cells))
+
     logo = Image.open(MASCOT_DIR / "ben-dragon-logo.png").convert("RGBA")
     make_app_icon(logo)
 
     manifest = {
-        "schemaVersion": 1,
-        "source": SOURCE.relative_to(ROOT).as_posix(),
-        "cellSize": sheet.width // 3,
+        "schemaVersion": 2,
+        "sources": [source.relative_to(ROOT).as_posix() for source, _ in SHEETS],
+        "cellSizes": sorted(cell_sizes),
         "states": report,
         "appIcon": APP_ICON.relative_to(ROOT).as_posix(),
     }
@@ -125,7 +166,7 @@ def main() -> None:
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("Processed {} Ben Dragon cells and {}".format(len(CELLS), APP_ICON))
+    print("Processed {} Ben Dragon cells and {}".format(len(report), APP_ICON))
 
 
 if __name__ == "__main__":

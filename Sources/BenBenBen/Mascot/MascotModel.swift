@@ -8,17 +8,23 @@ final class MascotModel: ObservableObject {
     @Published private(set) var presentationRevision = 0
     @Published private(set) var bubbleText: String?
     @Published private(set) var relatedThreadID: String?
+    @Published private(set) var isAwake = false
 
     private var agentCancellables = Set<AnyCancellable>()
     private var transientTask: Task<Void, Never>?
     private var ambientTask: Task<Void, Never>?
     private var interactionTask: Task<Void, Never>?
+    private var lastAmbientMoment: AmbientMoment?
     private var previouslyRunningThreadIDs = Set<String>()
     private var voiceOverride = false
     private var latestApprovals: [AgentRequestID: AgentApprovalRequest] = [:]
     private var latestTurns: [String: AgentTurn] = [:]
     private var latestConnection: AgentConnectionState = .disconnected
     private var latestError: String?
+
+    var isAmbientBehaviorRunning: Bool {
+        ambientTask != nil
+    }
 
     init() {
         startAmbientBehavior()
@@ -43,6 +49,22 @@ final class MascotModel: ObservableObject {
             )
         }
         .store(in: &agentCancellables)
+    }
+
+    /// The expanded notch is the awake conversation surface. Ambient play is
+    /// allowed only while the dragon is tucked away and operationally idle.
+    func setAwake(_ awake: Bool) {
+        guard isAwake != awake else { return }
+        isAwake = awake
+
+        if awake {
+            stopAmbientBehavior()
+            if state == .idle, interactionTask == nil {
+                present(.idle)
+            }
+        } else if state == .idle, interactionTask == nil {
+            startAmbientBehavior()
+        }
     }
 
     func setListening(_ listening: Bool) {
@@ -84,30 +106,49 @@ final class MascotModel: ObservableObject {
         }
     }
 
-    /// Starts restrained, interruptible idle moments using the approved poses.
-    /// Operational states always take priority and stop this loop immediately.
+    /// Starts interruptible idle activities while the notch remains asleep.
+    /// Waking the dragon or entering an operational state cancels the current
+    /// frame sequence immediately.
     func startAmbientBehavior() {
-        guard state == .idle, !voiceOverride, ambientTask == nil, interactionTask == nil else { return }
+        guard state == .idle,
+              !isAwake,
+              !voiceOverride,
+              ambientTask == nil,
+              interactionTask == nil else { return }
 
         ambientTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .milliseconds(Int64.random(in: 14_000...28_000)))
+                    try await Task.sleep(for: .milliseconds(Int64.random(in: 6_000...14_000)))
                 } catch {
                     return
                 }
 
-                guard let self, self.state == .idle, !self.voiceOverride else { return }
-                let moment = AmbientMoment.random()
-                self.present(moment.pose)
+                guard let self,
+                      self.state == .idle,
+                      !self.isAwake,
+                      !self.voiceOverride else { return }
+                let moment = AmbientMoment.random(avoiding: self.lastAmbientMoment)
+                self.lastAmbientMoment = moment
 
-                do {
-                    try await Task.sleep(for: moment.duration)
-                } catch {
-                    return
+                for frame in moment.frames {
+                    guard self.state == .idle,
+                          !self.isAwake,
+                          !self.voiceOverride,
+                          self.interactionTask == nil else { return }
+                    self.present(frame.pose, restartingAnimation: true)
+
+                    do {
+                        try await Task.sleep(for: frame.duration)
+                    } catch {
+                        return
+                    }
                 }
 
-                guard self.state == .idle, !self.voiceOverride, self.interactionTask == nil else { return }
+                guard self.state == .idle,
+                      !self.isAwake,
+                      !self.voiceOverride,
+                      self.interactionTask == nil else { return }
                 self.present(.idle)
             }
         }
@@ -253,31 +294,89 @@ final class MascotModel: ObservableObject {
     }
 }
 
+private struct AmbientFrame {
+    let pose: MascotState
+    let duration: Duration
+}
+
 private enum AmbientMoment: CaseIterable {
+    case photography
+    case stroll
+    case tea
+    case daydream
+    case cloudWatching
+    case resting
+    case reading
+    case music
+    case gardening
+    case snack
+    case stretch
+    case sketch
+    case rain
+    case stargazing
+    case bubbles
     case wave
     case ponder
     case nap
     case celebrate
 
-    var pose: MascotState {
+    var frames: [AmbientFrame] {
         switch self {
-        case .wave: return .listening
-        case .ponder: return .thinking
-        case .nap: return .sleep
-        case .celebrate: return .success
+        case .photography:
+            return [
+                AmbientFrame(pose: .cameraReady, duration: .milliseconds(900)),
+                AmbientFrame(pose: .cameraShutter, duration: .milliseconds(320)),
+                AmbientFrame(pose: .cameraReady, duration: .milliseconds(650)),
+            ]
+        case .stroll:
+            return [
+                AmbientFrame(pose: .walkLeft, duration: .milliseconds(440)),
+                AmbientFrame(pose: .walkRight, duration: .milliseconds(440)),
+                AmbientFrame(pose: .walkLeft, duration: .milliseconds(440)),
+                AmbientFrame(pose: .walkRight, duration: .milliseconds(440)),
+            ]
+        case .tea:
+            return [
+                AmbientFrame(pose: .teaHold, duration: .milliseconds(1_000)),
+                AmbientFrame(pose: .teaSip, duration: .milliseconds(750)),
+                AmbientFrame(pose: .teaHold, duration: .milliseconds(650)),
+            ]
+        case .daydream:
+            return [AmbientFrame(pose: .daydream, duration: .milliseconds(2_800))]
+        case .cloudWatching:
+            return [AmbientFrame(pose: .cloudWatch, duration: .milliseconds(3_200))]
+        case .resting:
+            return [AmbientFrame(pose: .rest, duration: .milliseconds(3_600))]
+        case .reading:
+            return [AmbientFrame(pose: .read, duration: .milliseconds(3_500))]
+        case .music:
+            return [AmbientFrame(pose: .music, duration: .milliseconds(3_200))]
+        case .gardening:
+            return [AmbientFrame(pose: .waterFlower, duration: .milliseconds(2_800))]
+        case .snack:
+            return [AmbientFrame(pose: .snack, duration: .milliseconds(2_200))]
+        case .stretch:
+            return [AmbientFrame(pose: .stretch, duration: .milliseconds(1_700))]
+        case .sketch:
+            return [AmbientFrame(pose: .sketch, duration: .milliseconds(3_200))]
+        case .rain:
+            return [AmbientFrame(pose: .rain, duration: .milliseconds(3_000))]
+        case .stargazing:
+            return [AmbientFrame(pose: .stargaze, duration: .milliseconds(3_200))]
+        case .bubbles:
+            return [AmbientFrame(pose: .bubbles, duration: .milliseconds(2_700))]
+        case .wave:
+            return [AmbientFrame(pose: .listening, duration: .milliseconds(1_300))]
+        case .ponder:
+            return [AmbientFrame(pose: .thinking, duration: .milliseconds(1_800))]
+        case .nap:
+            return [AmbientFrame(pose: .sleep, duration: .milliseconds(3_200))]
+        case .celebrate:
+            return [AmbientFrame(pose: .success, duration: .milliseconds(1_100))]
         }
     }
 
-    var duration: Duration {
-        switch self {
-        case .wave: return .milliseconds(1_300)
-        case .ponder: return .milliseconds(1_800)
-        case .nap: return .milliseconds(3_200)
-        case .celebrate: return .milliseconds(1_100)
-        }
-    }
-
-    static func random() -> AmbientMoment {
-        allCases.randomElement() ?? .wave
+    static func random(avoiding previous: AmbientMoment?) -> AmbientMoment {
+        allCases.filter { $0 != previous }.randomElement() ?? .wave
     }
 }

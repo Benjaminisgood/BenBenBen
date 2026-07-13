@@ -123,7 +123,7 @@ Runtime 安装不会隐式运行 Brewfile、macOS defaults、Git sync/push、服
 
 ## 5. Ben龙与语音
 
-`MascotState` 包含 idle、listening、thinking、working、waitingApproval、success、error 和 sleep。业务状态由 Codex/语音事件驱动并可随时打断空闲动作；`MascotModel.presentedState` 在 idle 时克制地编排招手、思考、小睡和庆祝。SwiftUI 负责呼吸、轻跳、Reduce Motion 与资源缓存。九格视觉源还包含独立 logo pose，切片后作为八态透明 sprite 与 1024 App 图标。
+`MascotState` 的核心业务状态包含 idle、listening、thinking、working、waitingApproval、success、error 和 sleep，另有只供空闲编排使用的活动姿态。业务状态由 Codex/语音事件驱动并可随时打断当前序列；刘海展开时 `MascotModel.isAwake` 会停止所有空闲活动并恢复 idle，只有收起且业务状态为 idle 时才会编排拍照、散步、喝茶、发呆、休息、阅读、听歌、浇花等动作。SwiftUI 负责逐帧切换、呼吸/轻跳、Reduce Motion 与资源缓存。三张九格视觉源切片为 27 张透明 sprite，其中包含独立 logo pose，并由 logo 生成 1024 App 图标。
 
 `VoiceInteractionController` 使用 Speech 与 AVFoundation：长按 250 ms 后录音、松开听写、两秒可取消倒计时后发送；不常驻监听。只有语音发起的短回复可按设置朗读，随时可停止。
 
