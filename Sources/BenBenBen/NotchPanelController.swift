@@ -62,6 +62,7 @@ final class NotchPanelController: NSObject {
     private let compactPanel: NotchPanel
     private let expandedPanel: NotchPanel
     let agentContext: NotchAgentContext
+    private let companionInteractionState = NotchCompanionInteractionState()
     private var hostingView: NSHostingView<NotchCompanionView>?
     private var compactHostingView: NSHostingView<NotchCompanionView>?
     private var mousePollingTimer: Timer?
@@ -362,6 +363,7 @@ final class NotchPanelController: NSObject {
             voiceInteraction: voiceInteraction,
             agentContext: agentContext,
             screenContext: screenContext,
+            interactionState: companionInteractionState,
             layout: layout,
             onSendPrompt: onSendPrompt,
             onStartNewTask: onStartNewTask,
@@ -491,13 +493,6 @@ final class NotchPanelController: NSObject {
         if didStartVoiceHold {
             didStartVoiceHold = false
             voiceInteraction.stopRecording()
-            return
-        }
-        switch mascotModel.state {
-        case .working, .waitingApproval, .success, .error:
-            showAgent()
-        default:
-            expand(animated: true)
         }
     }
 

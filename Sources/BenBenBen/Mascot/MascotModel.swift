@@ -121,7 +121,7 @@ final class MascotModel: ObservableObject {
         relatedThreadID = nil
         stopAmbientBehavior()
         interactionTask?.cancel()
-        present(.success)
+        present(.success, restartingAnimation: true)
         bubbleText = "嗨，我在这儿"
 
         interactionTask = Task { @MainActor [weak self] in
@@ -236,7 +236,8 @@ final class MascotModel: ObservableObject {
         }
     }
 
-    private func present(_ newState: MascotState) {
+    private func present(_ newState: MascotState, restartingAnimation: Bool = false) {
+        guard restartingAnimation || presentedState != newState else { return }
         presentedState = newState
         presentationRevision &+= 1
     }
