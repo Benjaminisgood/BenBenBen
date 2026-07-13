@@ -142,11 +142,6 @@ struct NotchCompanionView: View {
             .padding(.horizontal, 18)
             .padding(.top, 10)
 
-            if let agentStore = agentContext.store, !visibleTasks(in: agentStore).isEmpty {
-                taskBubbleRail(store: agentStore)
-                    .padding(.top, 8)
-            }
-
             Spacer(minLength: 4)
 
             HStack(spacing: 18) {
@@ -158,8 +153,27 @@ struct NotchCompanionView: View {
                     )
                     .scaleEffect(dragonHasWalkedOut ? 1 : 0.34, anchor: .top)
                     .offset(y: dragonHasWalkedOut ? 8 : -96)
-                    DragonActionGlyph(state: mascotModel.presentedState)
-                        .offset(x: -14, y: 14)
+
+                    if let agentStore = agentContext.store,
+                       !visibleTasks(in: agentStore).isEmpty {
+                        DragonTaskThoughtCloud(
+                            threads: visibleTasks(in: agentStore),
+                            store: agentStore,
+                            selectedThreadID: agentStore.selectedThreadID,
+                            isDetailVisible: detailThreadID != nil,
+                            onSelect: { threadID in
+                                withAnimation(.snappy(duration: 0.28)) {
+                                    agentStore.selectedThreadID = threadID
+                                    detailThreadID = threadID
+                                }
+                            }
+                        )
+                        .offset(x: detailThreadID == nil ? 112 : 96, y: -82)
+                        .zIndex(4)
+                    } else {
+                        DragonActionGlyph(state: mascotModel.presentedState)
+                            .offset(x: -14, y: 14)
+                    }
                 }
                 .onTapGesture(perform: onMascotAction)
                 .help("单击互动；双击进入五类共同窗口")
@@ -230,42 +244,6 @@ struct NotchCompanionView: View {
             .padding(.vertical, 9)
             .background(.white.opacity(0.075), in: .rect(cornerRadius: 16))
             .overlay { RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1) }
-    }
-
-    private func taskBubbleRail(store: AgentStore) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(visibleTasks(in: store)) { thread in
-                    Button {
-                        store.selectedThreadID = thread.id
-                        detailThreadID = thread.id
-                    } label: {
-                        TaskBubbleLabel(
-                            title: taskTitle(thread, store: store),
-                            status: store.activeTurns[thread.id]?.status ?? thread.status ?? "idle",
-                            isSelected: store.selectedThreadID == thread.id
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        ForEach(AgentTaskExecutionMode.allCases) { mode in
-                            Button {
-                                store.setExecutionMode(mode, for: thread.id)
-                            } label: {
-                                if store.executionMode(for: thread.id) == mode {
-                                    Label(mode.title, systemImage: "checkmark")
-                                } else {
-                                    Text(mode.title)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 4)
-        }
-        .scrollIndicators(.hidden)
-        .frame(maxWidth: 760)
     }
 
     private var composerBar: some View {
@@ -402,13 +380,6 @@ struct NotchCompanionView: View {
         }.sorted()
     }
 
-    private func taskTitle(_ thread: AgentThread, store: AgentStore) -> String {
-        let source = store.taskPrompts[thread.id] ?? thread.name ?? thread.preview
-        let normalized = source.replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalized.isEmpty { return "任务 \(thread.id.prefix(6))" }
-        return normalized.count > 24 ? String(normalized.prefix(23)) + "…" : normalized
-    }
 }
 
 private struct DragonActionGlyph: View {

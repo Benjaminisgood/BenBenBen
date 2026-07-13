@@ -1,32 +1,161 @@
 import SwiftUI
 
-struct TaskBubbleLabel: View {
-    let title: String
-    let status: String
-    let isSelected: Bool
+struct DragonTaskThoughtCloud: View {
+    let threads: [AgentThread]
+    @ObservedObject var store: AgentStore
+    let selectedThreadID: String?
+    let isDetailVisible: Bool
+    let onSelect: (String) -> Void
 
     var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(status.companionStatusColor)
-                .frame(width: 7, height: 7)
-                .shadow(color: status.companionStatusColor.opacity(0.7), radius: status.isCompanionRunning ? 4 : 0)
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-            if status.isCompanionRunning {
-                ProgressView().controlSize(.mini)
+        ZStack {
+            ForEach(Array(orderedThreads.prefix(4).enumerated()), id: \.element.id) { index, thread in
+                let isPrimary = index == 0
+                Button {
+                    onSelect(thread.id)
+                } label: {
+                    TaskThoughtBubble(
+                        title: taskTitle(thread),
+                        isPrimary: isPrimary,
+                        phase: index
+                    )
+                }
+                .buttonStyle(.plain)
+                .position(position(for: index))
+                .zIndex(Double(10 - index))
+                .contextMenu {
+                    ForEach(AgentTaskExecutionMode.allCases) { mode in
+                        Button {
+                            store.setExecutionMode(mode, for: thread.id)
+                        } label: {
+                            if store.executionMode(for: thread.id) == mode {
+                                Label(mode.title, systemImage: "checkmark")
+                            } else {
+                                Text(mode.title)
+                            }
+                        }
+                    }
+                }
+                .accessibilityLabel("正在思考：\(taskTitle(thread))")
+                .accessibilityHint("点击切换到这个任务并查看进展")
+            }
+
+            if orderedThreads.count > 4 {
+                Text("+\(orderedThreads.count - 4)")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.cyan)
+                    .padding(7)
+                    .background(.ultraThinMaterial, in: .circle)
+                    .position(x: 262, y: 154)
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 7)
-        .background(
-            isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.075),
-            in: .rect(cornerRadius: 15)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 15)
-                .stroke(isSelected ? Color.cyan.opacity(0.45) : Color.white.opacity(0.08), lineWidth: 1)
+        .frame(width: 300, height: 178)
+        .animation(.snappy(duration: 0.32), value: selectedThreadID)
+        .animation(.snappy(duration: 0.32), value: threads.map(\.id))
+    }
+
+    private var orderedThreads: [AgentThread] {
+        guard let selectedThreadID,
+              let selected = threads.first(where: { $0.id == selectedThreadID }) else {
+            return threads
+        }
+        return [selected] + threads.filter { $0.id != selectedThreadID }
+    }
+
+    private func position(for index: Int) -> CGPoint {
+        if isDetailVisible {
+            switch index {
+            case 0: return CGPoint(x: 150, y: 42)
+            case 1: return CGPoint(x: 238, y: 92)
+            case 2: return CGPoint(x: 226, y: 139)
+            default: return CGPoint(x: 70, y: 118)
+            }
+        }
+        switch index {
+        case 0: return CGPoint(x: 144, y: 40)
+        case 1: return CGPoint(x: 244, y: 91)
+        case 2: return CGPoint(x: 226, y: 142)
+        default: return CGPoint(x: 63, y: 117)
+        }
+    }
+
+    private func taskTitle(_ thread: AgentThread) -> String {
+        let source = store.taskPrompts[thread.id] ?? thread.name ?? thread.preview
+        let normalized = source.replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.isEmpty { return "任务 \(thread.id.prefix(6))" }
+        let limit = 24
+        return normalized.count > limit ? String(normalized.prefix(limit - 1)) + "…" : normalized
+    }
+}
+
+private struct TaskThoughtBubble: View {
+    let title: String
+    let isPrimary: Bool
+    let phase: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var floating = false
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(Color.cyan)
+                    .frame(width: isPrimary ? 8 : 6, height: isPrimary ? 8 : 6)
+                    .shadow(color: .cyan.opacity(0.8), radius: 5)
+
+                if isPrimary {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Image(systemName: "ellipsis")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.cyan)
+                        .opacity(floating ? 1 : 0.45)
+                } else {
+                    Image(systemName: "brain.head.profile")
+                        .font(.caption)
+                        .foregroundStyle(.cyan)
+                    Text(title)
+                        .font(.caption2.weight(.medium))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, isPrimary ? 12 : 9)
+            .padding(.vertical, isPrimary ? 9 : 7)
+            .frame(maxWidth: isPrimary ? 190 : 118, alignment: .leading)
+            .background(
+                Color.cyan.opacity(isPrimary ? 0.16 : 0.10),
+                in: .rect(cornerRadius: isPrimary ? 18 : 14)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: isPrimary ? 18 : 14)
+                    .stroke(Color.cyan.opacity(isPrimary ? 0.52 : 0.28), lineWidth: 1)
+            }
+
+            Circle()
+                .fill(Color.cyan.opacity(0.34))
+                .frame(width: isPrimary ? 9 : 7, height: isPrimary ? 9 : 7)
+                .offset(x: isPrimary ? 13 : 10, y: isPrimary ? 9 : 7)
+            Circle()
+                .fill(Color.cyan.opacity(0.22))
+                .frame(width: isPrimary ? 5 : 4, height: isPrimary ? 5 : 4)
+                .offset(x: isPrimary ? 7 : 5, y: isPrimary ? 17 : 13)
+        }
+        .offset(y: reduceMotion ? 0 : (floating ? -4 : 3))
+        .scaleEffect(reduceMotion ? 1 : (floating ? 1.015 : 0.985))
+        .shadow(color: .cyan.opacity(isPrimary ? 0.18 : 0.08), radius: isPrimary ? 12 : 7)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(
+                .easeInOut(duration: 1.45 + Double(phase) * 0.17)
+                    .delay(Double(phase) * 0.12)
+                    .repeatForever(autoreverses: true)
+            ) {
+                floating = true
+            }
         }
     }
 }
