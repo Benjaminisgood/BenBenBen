@@ -76,7 +76,6 @@ final class NotchPanelController: NSObject {
     private var suppressNextHotClick = false
     private let onSendPrompt: (String) -> Void
     private let onStartNewTask: (String) -> Void
-    private let onOpenCollaboration: () -> Void
 
     init(
         environment: WorkbenchEnvironment = WorkbenchEnvironment(),
@@ -85,8 +84,7 @@ final class NotchPanelController: NSObject {
         screenContext: ScreenContextMonitor = ScreenContextMonitor(),
         agentContext: NotchAgentContext = NotchAgentContext(),
         onSendPrompt: @escaping (String) -> Void = { _ in },
-        onStartNewTask: @escaping (String) -> Void = { _ in },
-        onOpenCollaboration: @escaping () -> Void = {}
+        onStartNewTask: @escaping (String) -> Void = { _ in }
     ) {
         self.environment = environment
         self.mascotModel = mascotModel
@@ -95,7 +93,6 @@ final class NotchPanelController: NSObject {
         self.agentContext = agentContext
         self.onSendPrompt = onSendPrompt
         self.onStartNewTask = onStartNewTask
-        self.onOpenCollaboration = onOpenCollaboration
         compactPanel = NotchPanel(
             contentRect: .zero,
             styleMask: [.borderless, .fullSizeContentView],
@@ -439,13 +436,6 @@ final class NotchPanelController: NSObject {
     private func observePanelMouseEvents() {
         compactPanel.onMouseEvent = { [weak self] event in
             guard let self else { return }
-            if event.type == .leftMouseDown,
-               event.clickCount == 2 {
-                self.voiceHoldTask?.cancel()
-                self.voiceHoldTask = nil
-                self.onOpenCollaboration()
-                return
-            }
             switch event.type {
             case .leftMouseDown:
                 self.beginHotPanelPress()
@@ -458,23 +448,8 @@ final class NotchPanelController: NSObject {
 
         expandedPanel.onMouseEvent = { [weak self] event in
             guard let self else { return }
-            if event.type == .leftMouseDown,
-               event.clickCount == 2,
-               self.isExpandedMascotHit(event.locationInWindow) {
-                self.onOpenCollaboration()
-                return
-            }
             self.editorInteractionState.handleMouseEvent(event, searchingIn: self.hostingView)
         }
-    }
-
-    private func isExpandedMascotHit(_ point: NSPoint) -> Bool {
-        NSRect(
-            x: expandedPanel.frame.width / 2 - 150,
-            y: 95,
-            width: 300,
-            height: max(280, expandedPanel.frame.height - 120)
-        ).contains(point)
     }
 
     private func beginHotPanelPress() {

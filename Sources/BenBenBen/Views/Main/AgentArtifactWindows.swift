@@ -405,24 +405,15 @@ private struct AgentArtifactWindowView: View {
     }
 
     private var composer: some View {
-        VStack(spacing: 6) {
-            if !reply.isEmpty {
-                Text(reply)
-                    .font(.caption)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                TextField("告诉 Ben龙 要在这个共同窗口完成什么…", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...3)
-                    .onSubmit(send)
-                Button("交给 Codex", systemImage: "arrow.up") { send() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+            TextField("告诉 Ben龙 要在这个共同窗口完成什么…", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...3)
+                .onSubmit(send)
+            Button("交给 Codex", systemImage: "arrow.up") { send() }
+                .buttonStyle(.borderedProminent)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(10)
     }
@@ -433,15 +424,10 @@ private struct AgentArtifactWindowView: View {
         return false
     }
 
-    private var reply: String {
-        guard let contextStore = agentContext.store,
-              let threadID = contextStore.selectedThreadID else { return "" }
-        return contextStore.agentMessages[threadID] ?? ""
-    }
-
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        store.saveNow()
         draft = ""
         onPrompt("在 \(store.kind.title) 共同窗口中：\(text)", store.selectedURL)
     }

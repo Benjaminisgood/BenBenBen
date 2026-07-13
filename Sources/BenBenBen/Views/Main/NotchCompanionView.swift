@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The notch is a character, not a miniature dashboard. A single click brings
-/// Ben龙 closer; a double click opens the five persistent artifact canvases.
+/// The notch is a character, not a miniature dashboard. A click brings Ben龙
+/// closer; shared artifact windows are opened explicitly from the menu bar.
 struct NotchCompanionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -67,7 +67,7 @@ struct NotchCompanionView: View {
         .contentShape(TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ben龙 Codex 伙伴")
-        .accessibilityHint(drawerState.isExpanded ? "双击打开五类共同窗口" : "单击唤醒，双击打开共同窗口，按住说话")
+        .accessibilityHint(drawerState.isExpanded ? "与 Ben龙 交互" : "单击唤醒，按住说话")
         .onChange(of: drawerState.isExpanded) { _, expanded in
             if expanded {
                 dragonHasWalkedOut = reduceMotion
@@ -125,7 +125,7 @@ struct NotchCompanionView: View {
         .clipped()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("唤醒 Ben龙")
-        .accessibilityHint("单击进入近身对话，双击打开五类共同窗口")
+        .accessibilityHint("单击进入近身对话")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { onExpand() }
     }
@@ -176,7 +176,7 @@ struct NotchCompanionView: View {
                     }
                 }
                 .onTapGesture(perform: onMascotAction)
-                .help("单击互动；双击进入五类共同窗口")
+                .help("单击互动")
 
                 if let detailThreadID, let agentStore = agentContext.store {
                     TaskProgressDetailCard(
@@ -344,7 +344,7 @@ struct NotchCompanionView: View {
             if !reply.isEmpty { return reply }
         }
         if let bubble = mascotModel.bubbleText, !bubble.isEmpty { return bubble }
-        return "告诉我你正在做什么。双击我，打开 HTML、PY、MD、SCRIPTS、PLIST 五个共同窗口。"
+        return "告诉我你正在做什么。"
     }
 
     private func send() {

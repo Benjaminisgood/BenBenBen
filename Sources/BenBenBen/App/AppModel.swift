@@ -96,9 +96,6 @@ final class AppModel: ObservableObject {
         },
         onStartNewTask: { [weak self] prompt in
             self?.startNewAgentTask(prompt)
-        },
-        onOpenCollaboration: { [weak self] in
-            self?.showArtifactWindows()
         }
     )
 
