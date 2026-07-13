@@ -9,7 +9,6 @@ struct BenBenBenApp: App {
     var body: some Scene {
         Settings {
             BenBenBenSettingsView(
-                settingsStore: model.workbench.settingsStore,
                 voiceInteraction: model.voiceInteraction,
                 runtimeCatalog: model.runtimeCatalog,
                 loginItemStore: model.loginItemStore

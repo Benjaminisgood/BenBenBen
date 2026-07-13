@@ -251,8 +251,6 @@ enum AgentApprovalKind: String, Sendable, Equatable {
     case permissions
     case userInput
     case mcpElicitation
-    case legacyCommand
-    case legacyFileChange
 }
 
 struct AgentApprovalRequest: Sendable, Equatable, Identifiable {

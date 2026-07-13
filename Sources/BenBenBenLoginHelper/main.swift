@@ -25,7 +25,6 @@ private final class LoginHelperDelegate: NSObject, NSApplicationDelegate {
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.arguments = ["--companion-only"]
         configuration.activates = false
         configuration.addsToRecentItems = false
         NSWorkspace.shared.openApplication(

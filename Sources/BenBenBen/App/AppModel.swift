@@ -2,56 +2,6 @@ import AppKit
 import Combine
 import Foundation
 
-enum MainRoute: String, CaseIterable, Hashable, Identifiable {
-    case home
-    case today
-    case inbox
-    case agents
-    case knowledge
-    case scripts
-    case python
-    case automations
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .home: return "Home"
-        case .today: return "Today"
-        case .inbox: return "Inbox"
-        case .agents: return "Agents"
-        case .knowledge: return "Knowledge"
-        case .scripts: return "Scripts"
-        case .python: return "Python"
-        case .automations: return "Automations"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .home: return "house"
-        case .today: return "sun.max"
-        case .inbox: return "tray"
-        case .agents: return "sparkles"
-        case .knowledge: return "books.vertical"
-        case .scripts: return "terminal"
-        case .python: return "chevron.left.forwardslash.chevron.right"
-        case .automations: return "clock.arrow.2.circlepath"
-        }
-    }
-}
-
-enum AgentConversationRole: Sendable {
-    case user
-    case assistant
-}
-
-struct AgentConversationEntry: Identifiable, Sendable {
-    let id = UUID()
-    let role: AgentConversationRole
-    let text: String
-}
-
 enum AgentPromptSubmissionResult: Equatable, Sendable {
     case accepted(threadID: String)
     case rejected(message: String)
@@ -61,8 +11,6 @@ enum AgentPromptSubmissionResult: Equatable, Sendable {
 final class AppModel: ObservableObject {
     static let shared = AppModel()
 
-    let workbench: WorkbenchEnvironment
-    let personalWorkspace: PersonalWorkspaceStore
     let mascotModel: MascotModel
     let voiceInteraction: VoiceInteractionController
     let screenContext: ScreenContextMonitor
@@ -70,12 +18,8 @@ final class AppModel: ObservableObject {
     let runtimeCatalog: RuntimeCatalogStore
     let loginItemStore: LoginItemStore
 
-    @Published var selectedRoute: MainRoute = .home
-    @Published var globalSearch = ""
-    @Published var isInspectorPresented = true
     @Published private(set) var didStart = false
     @Published private(set) var agentStore: AgentStore?
-    @Published private(set) var agentConversation: [String: [AgentConversationEntry]] = [:]
 
     private var agentBootstrapTask: Task<Void, Never>?
     private var archivedAgentTurnIDs = Set<String>()
@@ -97,7 +41,6 @@ final class AppModel: ObservableObject {
         }
     )
     private lazy var notchController = NotchPanelController(
-        environment: workbench,
         mascotModel: mascotModel,
         voiceInteraction: voiceInteraction,
         screenContext: screenContext,
@@ -111,14 +54,13 @@ final class AppModel: ObservableObject {
     )
 
     private init() {
-        workbench = WorkbenchEnvironment()
-        personalWorkspace = PersonalWorkspaceStore()
         mascotModel = MascotModel()
         voiceInteraction = VoiceInteractionController()
         screenContext = ScreenContextMonitor()
         agentContext = NotchAgentContext()
         runtimeCatalog = RuntimeCatalogStore()
         loginItemStore = LoginItemStore()
+        WorkspacePaths.ensureDirectories()
 
         voiceInteraction.onStateChanged = { [weak mascotModel, weak voiceInteraction] listening in
             // Continuous listening is ambient infrastructure. Keep operational
@@ -147,9 +89,6 @@ final class AppModel: ObservableObject {
             screenContext.start()
         }
         voiceInteraction.activatePersistentListeningIfNeeded()
-        Task {
-            await personalWorkspace.refresh()
-        }
         Task {
             await bootstrapAgent()
         }
@@ -181,11 +120,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func showWorkbench(_ mode: WorkbenchMode) {
-        workbench.workbenchState.select(mode)
-        notchController.showWorkbenchMode(mode)
-    }
-
     func bootstrapAgent() async {
         guard agentStore == nil else { return }
         if let agentBootstrapTask {
@@ -211,7 +145,7 @@ final class AppModel: ObservableObject {
             mascotModel.bind(to: store)
             observeVoiceReplyCompletion(in: store)
             await store.connect(
-                threadQuery: AgentThreadListQuery(cwd: [personalWorkspace.registry.root.path])
+                threadQuery: AgentThreadListQuery(cwd: [WorkspacePaths.root.path])
             )
         } catch {
             mascotModel.showError(error.localizedDescription)
@@ -257,7 +191,7 @@ final class AppModel: ObservableObject {
         var threadID = forceNewThread ? nil : store.selectedThreadID
         if threadID == nil {
             let options = AgentThreadStartOptions(
-                cwd: personalWorkspace.registry.root.path,
+                cwd: WorkspacePaths.root.path,
                 executionMode: store.defaultExecutionMode
             )
             threadID = await store.createThread(options: options)?.id
@@ -267,7 +201,7 @@ final class AppModel: ObservableObject {
         }
 
         let fallbackOptions = AgentThreadStartOptions(
-            cwd: personalWorkspace.registry.root.path,
+            cwd: WorkspacePaths.root.path,
             executionMode: store.executionMode(for: threadID)
         )
         let artifactBaseline = await Task.detached(priority: .utility) {
@@ -303,9 +237,6 @@ final class AppModel: ObservableObject {
         if voiceInitiated {
             voiceInteraction.speakConversationReply("收到，我开始处理这个任务。")
         }
-        agentConversation[sent.threadID, default: []].append(
-            AgentConversationEntry(role: .user, text: prompt)
-        )
         return .accepted(threadID: sent.threadID)
     }
 
@@ -324,9 +255,6 @@ final class AppModel: ObservableObject {
             return
         }
 
-        agentConversation[threadID, default: []].append(
-            AgentConversationEntry(role: .user, text: text)
-        )
         Task {
             let accepted = await store.steer(text, threadID: threadID, turnID: activeTurn.id)
             if accepted, voiceInitiated {
@@ -375,11 +303,6 @@ final class AppModel: ObservableObject {
                     let isProactive = self.proactiveAgentTurnIDs.remove(turnKey) != nil
                     let shouldSurface = !isProactive || !Self.isPassiveScreenReply(visibleMessage)
 
-                    if shouldSurface, !visibleMessage.isEmpty {
-                        self.agentConversation[threadID, default: []].append(
-                            AgentConversationEntry(role: .assistant, text: visibleMessage)
-                        )
-                    }
                     if shouldSurface,
                        self.voiceInteraction.canSpeakReplies {
                         self.voiceInteraction.speakConversationReply(visibleMessage)

@@ -1,6 +1,20 @@
 import SwiftUI
 
 @MainActor
+final class NotchAgentContext: ObservableObject {
+    @Published var store: AgentStore?
+
+    init(store: AgentStore? = nil) {
+        self.store = store
+    }
+}
+
+@MainActor
+final class NotchPresentationState: ObservableObject {
+    @Published var isExpanded = false
+}
+
+@MainActor
 final class NotchCompanionInteractionState: ObservableObject {
     @Published var isComposingNewTask = false
     @Published private(set) var composerFocusRevision = 0
@@ -19,33 +33,7 @@ final class NotchCompanionInteractionState: ObservableObject {
 struct NotchCompanionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // These stores remain owned by WorkbenchEnvironment for compatibility.
-    // Their hard-coded toolbars are intentionally absent from the notch: Codex
-    // edits the files and the shared artifact windows observe those files.
-    @ObservedObject var store: NoteStore
-    @ObservedObject var settingsStore: AppSettingsStore
-    let imageStore: LocalImageStore
-    @ObservedObject var markdownAIStore: MarkdownAIEditStore
-    @ObservedObject var markdownAIChatStore: MarkdownAIChatStore
-    @ObservedObject var fileLockStore: FilePermissionLockStore
-    @ObservedObject var drawerState: DrawerState
-    @ObservedObject var editorInteractionState: EditorInteractionState
-    @ObservedObject var workbenchState: WorkbenchState
-    @ObservedObject var scriptsState: ScriptsModuleState
-    @ObservedObject var pythonStore: CodeFileStore
-    @ObservedObject var appleScriptStore: CodeFileStore
-    @ObservedObject var shellCommandStore: ShellCommandStore
-    @ObservedObject var shellWorkspaceStore: ShellWorkspaceStore
-    @ObservedObject var launchdJobStore: LaunchdJobStore
-    @ObservedObject var launchdAIAgent: LaunchdAIAgent
-    @ObservedObject var shellAIStore: ScriptAIEditStore
-    @ObservedObject var pythonAIStore: ScriptAIEditStore
-    @ObservedObject var appleScriptAIStore: ScriptAIEditStore
-    @ObservedObject var condaStore: CondaEnvironmentStore
-    @ObservedObject var directoryStore: WorkspaceDirectoryStore
-    @ObservedObject var terminalRunner: CommandRunner
-    @ObservedObject var pythonRunner: PythonReplRunner
-    @ObservedObject var appleScriptRunner: CommandRunner
+    @ObservedObject var presentationState: NotchPresentationState
     @ObservedObject var mascotModel: MascotModel
     @ObservedObject var voiceInteraction: VoiceInteractionController
     @ObservedObject var agentContext: NotchAgentContext
@@ -57,7 +45,6 @@ struct NotchCompanionView: View {
     let onStartNewTask: (String) -> Void
     let onMascotAction: () -> Void
     let onTaskDetailVisibilityChanged: (Bool) -> Void
-    let onOpenSettings: () -> Void
     let onCollapse: () -> Void
 
     @State private var composer = ""
@@ -67,7 +54,7 @@ struct NotchCompanionView: View {
 
     var body: some View {
         ZStack {
-            if drawerState.isExpanded {
+            if presentationState.isExpanded {
                 conversationStage.transition(.opacity)
             } else {
                 dragonBehindNotch
@@ -75,16 +62,16 @@ struct NotchCompanionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(background)
-        .clipShape(TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18))
+        .clipShape(TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18))
         .overlay {
-            TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18)
-                .stroke(.white.opacity(drawerState.isExpanded ? 0.12 : 0.07), lineWidth: 1)
+            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18)
+                .stroke(.white.opacity(presentationState.isExpanded ? 0.12 : 0.07), lineWidth: 1)
         }
-        .contentShape(TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18))
+        .contentShape(TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ben龙 Codex 伙伴")
         .accessibilityHint("单击恐龙切换休息动作；刘海收起与展开使用独立控件")
-        .onChange(of: drawerState.isExpanded) { _, expanded in
+        .onChange(of: presentationState.isExpanded) { _, expanded in
             if expanded {
                 dragonHasWalkedOut = reduceMotion
                 if !reduceMotion {
@@ -98,7 +85,7 @@ struct NotchCompanionView: View {
             }
         }
         .onChange(of: interactionState.composerFocusRevision) { _, _ in
-            guard drawerState.isExpanded else { return }
+            guard presentationState.isExpanded else { return }
             focusComposerAfterExpansion()
         }
         .onChange(of: runningTaskIDs) { _, runningIDs in
@@ -113,10 +100,10 @@ struct NotchCompanionView: View {
 
     private var background: some View {
         ZStack {
-            TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18).fill(.ultraThinMaterial)
-            TopAttachedRoundedShape(radius: drawerState.isExpanded ? 30 : 18)
-                .fill(Color.black.opacity(drawerState.isExpanded ? 0.78 : 0.96))
-            if drawerState.isExpanded {
+            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18).fill(.ultraThinMaterial)
+            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18)
+                .fill(Color.black.opacity(presentationState.isExpanded ? 0.78 : 0.96))
+            if presentationState.isExpanded {
                 RadialGradient(
                     colors: [Color.green.opacity(0.13), .clear],
                     center: .center,
@@ -390,7 +377,7 @@ struct NotchCompanionView: View {
     private func focusComposerAfterExpansion() {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(120))
-            guard drawerState.isExpanded else { return }
+            guard presentationState.isExpanded else { return }
             isComposerFocused = true
         }
     }
@@ -440,5 +427,28 @@ private struct DragonActionGlyph: View {
         .symbolEffect(.bounce, value: state)
         .padding(9)
         .background(.ultraThinMaterial, in: .circle)
+    }
+}
+
+private struct TopAttachedRoundedShape: Shape {
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let radius = min(radius, rect.width / 2, rect.height / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX - radius, y: rect.maxY),
+            control: CGPoint(x: rect.maxX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.maxY - radius),
+            control: CGPoint(x: rect.minX, y: rect.maxY)
+        )
+        path.closeSubpath()
+        return path
     }
 }

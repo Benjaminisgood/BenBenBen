@@ -1,175 +1,47 @@
-# BenBenBen 架构说明
+# BenBenBen 架构
 
-## 1. 产品边界
-
-`BenBenBen` 是由 SwiftPM 管理的 macOS 26 原生刘海应用。AppKit 刘海 `NSPanel` 只承载“藏在刘海后面的龙”和放大后的对话舞台。HTML、PY、MD、SCRIPTS、PLIST 是五个独立、可同时存在的共同文件窗口，不再作为刘海中的写死标签页。无刘海时回退为顶部浮动入口。
-
-原始个人资料只保存在 `~/keyoti`；派生数据库只保存搜索索引和 UI 元数据。Codex 会话正文由 app-server thread API 管理。
-
-SwiftPM 身份统一为：
+## 产品路径
 
 ```text
-Package.swift
-├── executable product: BenBenBen
-│   └── target: BenBenBen
-└── executable product: BenBenBenLoginHelper
-    └── target: BenBenBenLoginHelper
+BenBenBenApp
+├── AppModel
+│   ├── AgentStore -> codex app-server
+│   ├── MascotModel / VoiceInteractionController / ScreenContextMonitor
+│   ├── NotchPanelController -> NotchCompanionView
+│   └── AgentArtifactWindowController
+├── Settings scene
+└── MenuBarExtra
 ```
 
-App bundle 为 `BenBenBen.app`，Bundle ID 为 `io.github.benjaminisgood.benbenben`。
+当前产品只有两类界面：
 
-## 2. 启动与 Scene
+1. 刘海伙伴：展示龙、任务进度、审批、文本/语音输入和屏幕上下文状态。
+2. 五个共同窗口：HTML、Python、Markdown、Shell/AppleScript、launchd plist。
 
-1. `Sources/BenBenBen/App/BenBenBenApp.swift` 通过 SwiftUI `@main App` 启动。
-2. `AppDelegate` 使用 `.accessory` activation policy，启动后立即显示紧凑刘海，不创建普通主窗口。
-3. `Settings` 是禁用状态恢复的辅助窗口，按需提供 Codex、语音、目录、权限和 Runtime 设置。
-4. `MenuBarExtra` 提供龙、五类共同窗口、Settings 和退出入口。
-5. `AppModel` 装配模块模型；`NotchPanelController` 是窄 AppKit 边界，只管理一个 `NSPanel` 的几何、键盘/鼠标事件和展开/收起。
-6. `NotchCompanionView` 长期作为同一个 hosting root；尺寸变化不会替换 Ben龙或 composer 的 SwiftUI 状态。
-7. `AgentArtifactWindowController` 按需创建五个普通 `NSWindow`，轮询外部文件变化，使 Codex 编辑和用户编辑保持同一画布。
+不存在第二套主窗口、旧诊断页面或按文件类型复制的编辑工作台。
 
-普通启动和 Login Item 启动均只显示刘海伙伴。`--companion-only` 参数继续作为登录 helper 的兼容参数，但不再改变界面模型。
+## Codex 协议
 
-## 3. 模块分层
+`CodexProcessActor` 只发送当前 `initialize`、`thread/*` 和 `turn/*` 接口，并处理当前 item approval 请求。`AgentStore` 把协议事件投影成线程、活动、消息、计划、token 与审批状态。
 
-### App 与刘海工作台
+`ProtocolSchemas/Codex-<version>/` 保存已验证的 app-server schema 快照。升级 Codex 基线时重新生成快照并运行协议测试。
 
-| 位置 | 职责 |
-| --- | --- |
-| `App/BenBenBenApp.swift` | Scene、Commands、Settings、MenuBarExtra。 |
-| `App/AppModel.swift` | 刘海页面入口、Agent 与工作台模块模型装配。 |
-| `App/WorkbenchEnvironment.swift` | 现有 Markdown、Scripts、Python、AppleScript、Jobs store 的统一生命周期。 |
-| `Views/Main/NotchCompanionView.swift` | 常驻 Ben龙、出场动画、回复、审批、语音和 composer。 |
-| `Views/Main/AgentArtifactWindows.swift` | HTML / PY / MD / SCRIPTS / PLIST 五个文件共同窗口。 |
-| `Views/Main/NotchAgentView.swift` | 旧完整 Agent 诊断 UI，保留为兼容实现，不再作为默认刘海页面。 |
-| `NotchPanelController.swift` | 单一 AppKit 刘海/浮动 panel、屏幕几何和事件桥接。 |
+## 文件共同窗口
 
-空闲时单击恐龙只会按顺序切换下一组休息动作，不负责展开、收起刘海或聚焦输入框；恐龙不再提供双击命令。刘海状态由顶部收起按钮、菜单等独立入口控制。五类共同窗口由菜单栏按需打开，每个窗口只提供文件列表、共同编辑区和一个 Codex composer，不展示 Agent 回复；每次 shared-window composer 提交都创建独立 thread，允许不同窗口或不同文件并行执行，只有 Agent 接受任务后才清空草稿。创建、教学、改写、执行和自动化策略由真实 Agent 根据上下文决定。
+`AgentArtifactKind` 定义每类文件的当前根目录和扩展名。窗口直接扫描文件系统，不维护第二份业务数据库。任务前后快照用于自动显示新建或更新的产物。
 
-### Agent
+## Runtime
 
-`Sources/BenBenBen/Agent/` 定义稳定的 App 内部边界：
+`Runtime/` 是版本化、可原子安装的运行目录：
 
-| 类型 | 职责 |
-| --- | --- |
-| `AgentRuntime` | 启动/停止、账户、线程、turn、interrupt、审批和 `AsyncStream<AgentEvent>`。 |
-| `CodexExecutableDetector` | 发现用户选择或 PATH 中的 Codex executable，并显示版本。 |
-| `CodexProcessActor` | 长驻运行 `codex app-server --stdio`，管理 JSONL request/response、stderr 与重启。 |
-| `AgentStore` | 把线程、delta、Diff、命令输出、token、审批和错误投影到 SwiftUI。 |
-| `ScreenContextMonitor` | 显式授权的 ScreenCaptureKit 采样、变化检测与 `localImage` 上下文。 |
-| `AgentOperatingContract` | 每回合注入用户目录规则、五类产物方法论与风险审批边界。 |
+- `bin/benbenben`：完整 CLI。
+- `bin/bbb`：当前短别名。
+- `bin/benbenben-mcp`：MCP helper。
+- `Benshell/`：当前 shell 环境和固定项目控制器。
+- `manifest.json`：可执行 action 白名单。
 
-集成使用稳定 app-server 协议及 `turn/start` 的 `localImage` 输入，不依赖私有屏幕 API 或复制认证。解码器允许服务端增加未知字段；未知事件会记录而不是导致进程崩溃。Codex 登录由所选 executable 自己管理，App 不读取或复制 `auth.json`。
+Runtime 不接受模型拼接的任意 argv。非只读 action 必须审批。
 
-已验证协议固定在 `ProtocolSchemas/Codex-<version>/`。版本变化时 App 显示契约警告；升级基线必须先重新生成 schema 并跑契约测试。
+## 数据与安全边界
 
-### 个人知识与任务
-
-`Sources/BenBenBen/Personal/` 负责 `~/keyoti` 的只读索引和受控任务写入：
-
-| 类型 | 职责 |
-| --- | --- |
-| `WorkspaceRegistry` | Markdown、Shell、Python、AppleScript 和 launchd 的唯一根目录注册表。 |
-| `PersonalSearchIndex` | SQLite FTS5 派生索引、mtime/内容哈希增量刷新、来源路径和行号。 |
-| `PersonalTaskService` | 识别 checkbox、`TODO:`/`待完成:`、日期和标签；执行带行哈希校验的完成操作。 |
-| `PersonalWorkspaceStore` | SwiftUI 查询、刷新、Inbox 捕获和冲突错误状态。 |
-
-快速捕获写入 `~/keyoti/mds/Inbox.md`。任务更新前会核对原行哈希并尊重系统级文件锁；外部修改或锁定时拒绝覆盖。
-
-### 现有工作台
-
-| 文件 | 职责 |
-| --- | --- |
-| `NoteStore.swift` | Markdown 文件发现、保存、外部同步。 |
-| `CodeFileStore.swift` | Python 与 AppleScript 文件存储。 |
-| `ShellWorkspaceStore.swift` | Shell workspace、脚本和 transcript。 |
-| `ScriptsModuleState.swift` | Scripts 搜索、命令和语言状态。 |
-| `FilePermissionLockStore.swift` | UI 与文件系统双层写保护。 |
-| `TerminalAppBridge.swift` | 在 Terminal.app 打开目录或运行用户确认的命令。 |
-| `PythonReplRunner.swift` | 管理 Python 子进程及 JSON 行协议。 |
-| `LaunchdJobStore.swift` | plist 扫描、保存、加载、卸载与状态。 |
-
-`Vendor/swift-markdown-engine` 继续提供 TextKit 2、Markdown、wiki links、附件、任务 checkbox、代码高亮和 LaTeX 能力。
-
-## 4. Runtime
-
-版本化源位于仓库 `Runtime/`，并作为 `BenBenBen.app/Contents/Resources/Runtime` 打包。安装器把版本复制到：
-
-```text
-~/Library/Application Support/BenBenBen/Runtime/
-├── releases/<version>/
-└── current -> releases/<version>
-```
-
-`current` 通过原子符号链接切换。受管 `~/.zshrc` 区块把 Runtime `bin` 加入 PATH，并加载同一份 `Benshell/zsh/init.zsh`。
-
-`Runtime/manifest.json` 的 action 数据契约为：
-
-```text
-id / title / summary / executable / arguments / cwd / risk / inputSchema
-```
-
-`executable` 必须是 Runtime 内相对路径，`arguments` 是固定数组。`benbenben tools run` 不接受额外 argv；非 `read` action 必须显式审批。
-
-Runtime 安装不会隐式运行 Brewfile、macOS defaults、Git sync/push、服务启动或端口清理。
-
-`Runtime/bin/benbenben-mcp` 是无第三方依赖的 stdio MCP helper，提供：
-
-- `search_knowledge`、`read_document`、`recent_activity`
-- `list_workflows`、`workflow_status`、`run_workflow`
-- `list_jobs`、`job_status`、`run_job`
-
-它不会接受任意 executable 或 argv。只读 manifest action 可执行；非只读 workflow 与 `run_job` 只返回 `approval_required`，由原生 App 完成审批。
-
-## 5. Ben龙与语音
-
-`MascotState` 的核心业务状态包含 idle、listening、thinking、working、waitingApproval、success、error 和 sleep，另有只供空闲编排使用的活动姿态。业务状态由 Codex/语音事件驱动并可随时打断当前序列；刘海展开时 `MascotModel.isAwake` 会停止所有空闲活动并恢复 idle，只有收起且业务状态为 idle 时才会编排拍照、散步、喝茶、发呆、休息、阅读、听歌、浇花等动作。SwiftUI 负责逐帧切换、呼吸/轻跳、Reduce Motion 与资源缓存。三张九格视觉源切片为 27 张透明 sprite，其中包含独立 logo pose，并由 logo 生成 1024 App 图标。
-
-`VoiceInteractionController` 使用 Speech 与 AVFoundation：长按 250 ms 后录音、松开听写、两秒可取消倒计时后发送；不常驻监听。只有语音发起的短回复可按设置朗读，随时可停止。
-
-## 6. 默认目录
-
-```text
-~/keyoti/
-├── html/
-├── mds/
-│   ├── Inbox.md
-│   └── attachments/
-├── pys/
-├── shs/
-│   ├── workspace-scripts/
-│   ├── workspaces/
-│   └── workspace-inputs/
-├── applescripts/
-└── launchds/
-```
-
-`~/keyoti` 始终是个人文件的唯一真相，App 不自动搬迁或删除它。
-
-## 7. 安全与审批
-
-- 读取与搜索可自动执行；任何文件写入先展示 Diff。
-- 命令、Jobs、删除、Git push 和外发动作进入审批。
-- Agent thread 默认使用用户选中的项目 cwd；个人会话默认 `/Users/ben/keyoti`。
-- 默认 sandbox 为 workspace-write、按需审批，不授予整个 Home unrestricted 权限。
-- 文件删除进入废纸篓并二次确认。
-- API Key 保存在 macOS Keychain；百炼仅作为 Advanced 中的旧版兼容 Provider。
-- Runtime action 只能引用 manifest 中的固定 action ID。
-
-### launchd 双前缀兼容
-
-- 新建 Job 使用 `com.benbenben.*`。
-- `com.notchwow.*` 是旧版兼容前缀，继续显示并保持当前 loaded/unloaded 状态。
-- BenBenBen 不自动重命名、卸载或删除旧 `com.notchwow.*` Job。
-- 新前缀的孤儿清理逻辑不得扩展到旧前缀。
-
-## 8. 迁移兼容层
-
-为了保留原 notchwow 与 notchNotes 用户数据：
-
-- 新偏好键使用 `benbenben.*`，同时读取 `notchwow.*`、`notchNotes.*` 等已知旧键。
-- 新 Keychain service 为 `io.github.benjaminisgood.benbenben`。旧 service 仅在 Advanced 中由用户明确点击导入，避免不同签名 ACL 在启动时弹窗；复制后不删除旧 item。
-- `benshell`、`notchwow`、`nw` 命令继续转发到统一 `benbenben` CLI。
-- 旧 `/Users/ben/Desktop/Benshell`、旧仓库和旧 App bundle 作为迁移备份保留到验收结束。
-
-兼容字符串是刻意保留的数据契约，品牌清理不能机械删除它们。
+原始文件只存放在 `~/keyoti` 的当前目录中。新 launchd Label 使用 `com.benbenben.*`；其他前缀不属于应用管理面。现有 `com.notchwow.*` Job 受仓库安全约定保护，不自动改名、卸载或删除。

@@ -548,7 +548,7 @@ final class AgentStore: ObservableObject {
         let response: AgentApprovalResponse
         let accepted: Bool
         switch request.kind {
-        case .command, .fileChange, .legacyCommand, .legacyFileChange:
+        case .command, .fileChange:
             response = .acceptForSession
             accepted = true
         case .permissions:

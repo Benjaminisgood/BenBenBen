@@ -30,9 +30,6 @@ chmod +x \
   "$DESTINATION/bin/benbenben" \
   "$DESTINATION/bin/benbenben-mcp" \
   "$DESTINATION/bin/bbb" \
-  "$DESTINATION/bin/benshell" \
-  "$DESTINATION/bin/notchwow" \
-  "$DESTINATION/bin/nw" \
   "$DESTINATION/Benshell/scripts/"* \
   "$DESTINATION/Benshell/bootstrap/"*.sh
 

@@ -1,4 +1,0 @@
-#!/usr/bin/env zsh
-set -euo pipefail
-SCRIPT_PATH="${0:A}"
-exec "${SCRIPT_PATH:h}/benbenben" "$@"

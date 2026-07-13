@@ -1,15 +1,9 @@
 #!/usr/bin/env zsh
 set -euo pipefail
 
-if [[ -z "${BENBENBEN_PROJECT_HOME:-}" ]]; then
-  if [[ -n "${NOTCHWOW_HOME:-}" && "$NOTCHWOW_HOME" != "/Users/ben/Desktop/notchwow" ]]; then
-    BENBENBEN_PROJECT_HOME="$NOTCHWOW_HOME"
-  else
-    BENBENBEN_PROJECT_HOME="/Users/ben/Desktop/BenBenBen"
-  fi
-fi
-BENBENBEN_APP_NAME="${BENBENBEN_APP_NAME:-${NOTCHWOW_APP_NAME:-BenBenBen}}"
-BENBENBEN_GIT_REMOTE="${BENBENBEN_GIT_REMOTE:-${NOTCHWOW_GIT_REMOTE:-origin}}"
+BENBENBEN_PROJECT_HOME="${BENBENBEN_PROJECT_HOME:-/Users/ben/Desktop/BenBenBen}"
+BENBENBEN_APP_NAME="${BENBENBEN_APP_NAME:-BenBenBen}"
+BENBENBEN_GIT_REMOTE="${BENBENBEN_GIT_REMOTE:-origin}"
 SCRIPT_PATH="${0:A}"
 SCRIPT_DIR="${SCRIPT_PATH:h}"
 
@@ -32,11 +26,6 @@ preflight() {
 require_run_script() {
   preflight
   [[ -x "$BENBENBEN_PROJECT_HOME/Scripts/build_and_run.sh" ]] || die "Scripts/build_and_run.sh not found or not executable"
-}
-
-require_test_script() {
-  preflight
-  [[ -x "$BENBENBEN_PROJECT_HOME/Scripts/test-logic.sh" ]] || die "Scripts/test-logic.sh not found or not executable"
 }
 
 stop_app() {
@@ -74,9 +63,9 @@ run_script() {
 }
 
 test_logic() {
-  require_test_script
+  preflight
   cd "$BENBENBEN_PROJECT_HOME"
-  ./Scripts/test-logic.sh "$@"
+  swift test "$@"
 }
 
 package_app() {
@@ -111,7 +100,6 @@ Environment:
   BENBENBEN_APP_NAME      Default: BenBenBen
   BENBENBEN_GIT_REMOTE    Default: origin
 
-Legacy NOTCHWOW_HOME, NOTCHWOW_APP_NAME, and NOTCHWOW_GIT_REMOTE are honored.
 Nothing in Runtime startup automatically runs sync, pull, push, Brewfile, or macOS defaults.
 EOF
 }
@@ -128,7 +116,7 @@ case "$command_name" in
   verify) run_script verify "$@" ;;
   stop) stop_app "$@" ;;
   restart) stop_app; run_script run "$@" ;;
-  test|test-logic) test_logic "$@" ;;
+  test) test_logic "$@" ;;
   logs) run_script --logs "$@" ;;
   telemetry) run_script --telemetry "$@" ;;
   debug) run_script --debug "$@" ;;

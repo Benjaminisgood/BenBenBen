@@ -11,12 +11,4 @@ final class WorkspacePathsTests: XCTestCase {
                 .path
         )
     }
-
-    func testLaunchdTemplateRoundTripsEscapedLabel() {
-        let label = "com.notchwow.test<&>"
-        XCTAssertEqual(
-            LaunchdJobStore.extractLabel(from: LaunchdJobStore.plistTemplate(label: label)),
-            label
-        )
-    }
 }

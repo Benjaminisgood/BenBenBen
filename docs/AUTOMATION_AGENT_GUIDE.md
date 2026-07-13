@@ -16,17 +16,18 @@
 FORCE=1 ./Scripts/install-keyoti-agent-guide.sh
 ```
 
-主应用仓库路径是 `/Users/ben/Desktop/BenBenBen`。不要把旧 `/Users/ben/Desktop/notchwow` 写入新的自动化配置；旧路径只可作为迁移历史识别。
+主应用仓库路径是 `/Users/ben/Desktop/BenBenBen`。新的自动化配置不得引用其他历史 checkout。
 
 ## 2. 目录约定
 
 | 类型 | 源文件位置 | 运行方式 |
 | --- | --- | --- |
+| HTML | `~/keyoti/html/**/*.html` | HTML 共同窗口直接预览 |
 | Shell | `~/keyoti/shs/workspace-scripts/*.sh` | `/bin/zsh /absolute/path/script.sh` |
 | Python | `~/keyoti/pys/*.py` | Settings 中配置的 Conda Python |
 | AppleScript | `~/keyoti/applescripts/*.applescript` | `/usr/bin/osascript /absolute/path/script.applescript` |
 | 新 Jobs | `~/keyoti/launchds/com.benbenben.<task>.plist` | Jobs 工作区加载和卸载 |
-| 旧 Jobs | `~/keyoti/launchds/com.notchwow.<task>.plist` | 迁移兼容；保持现状 |
+| 非当前命名空间 Jobs | `~/keyoti/launchds/com.notchwow.<task>.plist` | 不管理；保持现状 |
 
 Shell 的 `workspaces/`、`workspace-inputs/`、transcript 和日志属于运行产物。Agent 不应把业务脚本写入这些目录。
 
@@ -35,6 +36,8 @@ Shell 的 `workspaces/`、`workspace-inputs/`、transcript 和日志属于运行
 1. `shs/workspace-scripts/*.sh` 只解析少量参数、设置环境变量和调用下一层。
 2. `pys/*.py` 负责结构化数据、状态持久化、内容生成和复杂业务逻辑。
 3. `applescripts/*.applescript` 只负责通知、窗口控制、快速笔记等 macOS UI 交互。
+
+五个共同窗口按以下协作链工作：MD 是只读知识源；PLIST 只调度固定 Shell 入口；SCRIPTS 负责薄入口和 macOS UI 适配；PY 处理业务逻辑与 JSON 状态；所有人读产物统一落入 HTML 模块。机器状态继续写入 `shs/workspaces/`。
 
 避免在 Shell 中内嵌大段 Python，也不要把业务 Python 放进 Shell 目录下的隐藏缓存目录。
 
@@ -54,13 +57,13 @@ CONDA_ROOT="${CONDA_ROOT:-$HOME/miniforge3}"
 
 建议让 Shell 入口统一 `source ~/keyoti/shs/workspace-scripts/automation-common.sh`。公共入口负责扩展 `launchd` 下较短的 PATH、解析 `KEYOTI_HOME` 与寻找 Python。
 
-## 4. Jobs 编排与双前缀迁移
+## 4. Jobs 编排与命名空间边界
 
 新 plist 使用唯一的 `com.benbenben.*` Label，并在 `ProgramArguments` 中使用绝对路径。stdout 与 stderr 建议写入 `~/keyoti/launchds/` 下对应的 `.stdout.log` 和 `.stderr.log`。
 
-`com.notchwow.*` 是旧版兼容前缀，规则如下：
+`com.notchwow.*` 不属于当前管理命名空间，规则如下：
 
-- 继续识别并显示旧 plist 和服务状态。
+- 只可在用户明确指定文件时读取 plist 和服务状态。
 - 不自动改名为 `com.benbenben.*`。
 - 不自动 bootstrap、bootout、删除或替换。
 - 不把新前缀的孤儿清理策略扩展到旧前缀。
@@ -86,12 +89,13 @@ id / title / summary / executable / arguments / cwd / risk / inputSchema
 ## 6. 安全默认值
 
 - 定时任务优先使用确定性的本地逻辑。AI 或网络请求可以增强结果，但不应成为生成基本产物的唯一方式。
+- 自动化需要 AI 内容时首选只读 Codex CLI，失败后才尝试 OpenCode；两者都不可用时必须回退到确定性本地逻辑。Codex 自动化应隔离易漂移的个人配置，并使用只读 sandbox；模型输出不能直接变成任意 shell 命令。
 - 定时任务默认不得自动修改文献元数据、提交代码、推送仓库或向联系人发送消息。
 - Papis 等资料库适合定时做只读审计；写入必须由用户显式触发并检查差异。
 - GUI 自动化默认只生成草稿。点击发送、删除、覆盖或执行不可逆动作前，需要显式参数或用户确认。
 - 每日产物采用带日期目录或文件名，并先检查当天产物是否存在；重复运行保持幂等。
-- 所有给人阅读的 AI 或自动化报告统一输出为 `.html`。JSON 只用于机器状态，不把 Markdown 作为面向用户的最终报告格式。
-- Markdown 笔记是只读知识源。笔记派生的练习页面写入 `~/Desktop/Keyoti_Reports/note-exercises/`，不得回写 `~/keyoti/mds/`。
+- 所有给人阅读的 AI 或自动化报告统一输出到 `~/keyoti/html/` 下的模块目录，并使用 `.html`。JSON 只用于机器状态，不把 Markdown 作为面向用户的最终报告格式。
+- Markdown 笔记是只读知识源。笔记派生的练习页面写入 `~/keyoti/html/note-exercises/`，不得回写 `~/keyoti/mds/`。
 - 文件锁保护的 Markdown、脚本和 plist 不可写；不要用 chmod/chflags 绕过锁。
 
 ## 7. 质量检查

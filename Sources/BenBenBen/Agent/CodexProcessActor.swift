@@ -457,8 +457,6 @@ actor CodexProcessActor: AgentRuntime {
         case "item/permissions/requestApproval": kind = .permissions
         case "item/tool/requestUserInput": kind = .userInput
         case "mcpServer/elicitation/request": kind = .mcpElicitation
-        case "execCommandApproval": kind = .legacyCommand
-        case "applyPatchApproval": kind = .legacyFileChange
         default: kind = nil
         }
 
@@ -755,17 +753,6 @@ actor CodexProcessActor: AgentRuntime {
             case .acceptForSession: decision = "acceptForSession"
             case .decline: decision = "decline"
             case .cancel: decision = "cancel"
-            default: throw unsupportedApproval(request, response)
-            }
-            return .object(["decision": .string(decision)])
-
-        case .legacyCommand, .legacyFileChange:
-            let decision: String
-            switch response {
-            case .accept: decision = "approved"
-            case .acceptForSession: decision = "approved_for_session"
-            case .decline: decision = "denied"
-            case .cancel: decision = "abort"
             default: throw unsupportedApproval(request, response)
             }
             return .object(["decision": .string(decision)])

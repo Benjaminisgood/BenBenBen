@@ -11,19 +11,11 @@ let package = Package(
         .executable(name: "BenBenBen", targets: ["BenBenBen"]),
         .executable(name: "BenBenBenLoginHelper", targets: ["BenBenBenLoginHelper"])
     ],
-    dependencies: [
-        .package(path: "Vendor/swift-markdown-engine")
-    ],
     targets: [
         .executableTarget(
             name: "BenBenBen",
-            dependencies: [
-                .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
-                .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine")
-            ],
             path: "Sources/BenBenBen",
             linkerSettings: [
-                .linkedFramework("Security"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("ScreenCaptureKit"),
                 .linkedFramework("Speech"),
