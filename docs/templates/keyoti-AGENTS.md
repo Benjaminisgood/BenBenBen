@@ -32,6 +32,7 @@ Before editing scripts or plist files, read `/Users/ben/Desktop/BenBenBen/docs/A
 - Keep generated JSON, logs, PID files, and locks under `shs/workspaces/`.
 - Prefer deterministic local generation. AI and network calls may enhance a task, but a scheduled Job should still produce an inspectable result when they fail.
 - For AI content, prefer the read-only Codex CLI gateway and fall back to OpenCode. Never turn model output into arbitrary shell commands.
+- Read OpenCode credentials only from environment variables or macOS Keychain (default service: `keyoti-dashscope-api-key`). Use a temporary tool-disabled config; never persist a token in source, reports, or logs.
 
 ## Safety Defaults
 
@@ -57,3 +58,11 @@ After a broad automation change, also run:
 ```bash
 /bin/zsh ~/keyoti/shs/workspace-scripts/keyoti-doctor.sh
 ```
+
+To perform one real read-only request against each AI provider, run:
+
+```bash
+python3 ~/keyoti/pys/keyoti_doctor.py --ai-smoke
+```
+
+The Codex smoke check is required; OpenCode is an optional fallback check and reports expired credentials explicitly.

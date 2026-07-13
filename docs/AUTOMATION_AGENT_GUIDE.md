@@ -90,6 +90,7 @@ id / title / summary / executable / arguments / cwd / risk / inputSchema
 
 - 定时任务优先使用确定性的本地逻辑。AI 或网络请求可以增强结果，但不应成为生成基本产物的唯一方式。
 - 自动化需要 AI 内容时首选只读 Codex CLI，失败后才尝试 OpenCode；两者都不可用时必须回退到确定性本地逻辑。Codex 自动化应隔离易漂移的个人配置，并使用只读 sandbox；模型输出不能直接变成任意 shell 命令。
+- OpenCode 保底凭据只从环境变量或 macOS 钥匙串读取，默认钥匙串 service 为 `keyoti-dashscope-api-key`。每次调用使用临时 `OPENCODE_CONFIG` 覆盖并禁用 Shell、读写和编辑工具，不把 token 写回脚本、报告或日志。
 - 定时任务默认不得自动修改文献元数据、提交代码、推送仓库或向联系人发送消息。
 - Papis 等资料库适合定时做只读审计；写入必须由用户显式触发并检查差异。
 - GUI 自动化默认只生成草稿。点击发送、删除、覆盖或执行不可逆动作前，需要显式参数或用户确认。
@@ -120,3 +121,11 @@ plutil -lint ~/keyoti/launchds/com.notchwow.task.plist
 ```bash
 /bin/zsh ~/keyoti/shs/workspace-scripts/keyoti-doctor.sh
 ```
+
+需要真实验证两套 AI provider 时运行：
+
+```bash
+python3 ~/keyoti/pys/keyoti_doctor.py --ai-smoke
+```
+
+Codex 冒烟属于必需检查；OpenCode 冒烟是保底检查，会在凭据过期时明确报告为可选故障。
