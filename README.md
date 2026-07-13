@@ -2,7 +2,7 @@
 
 ![BenBenBen preview](docs/assets/readme-hero.png)
 
-`BenBenBen` 是住在 MacBook 刘海后面的个人 Codex 伙伴。刘海伙伴固定为 `186 × 140` 的纯黑区域，不再折叠或悬停展开；点击龙开始或暂停语音。HTML、PY、MD、SCRIPTS、PLIST 五个多标签共同窗口，加上单实例任务窗口，共同组成六窗口协作界面。
+`BenBenBen` 是住在 MacBook 刘海后面的个人 Codex 伙伴。刘海伙伴是一个不折叠的纯黑区域，可配置物理刘海宽高；面板总高自动加上固定的龙活动区，因此龙始终避开物理刘海，并以不同动作表达聆听、思考、工作和结果状态。点击龙开始或暂停语音。HTML、PY、MD、SCRIPTS、PLIST 五个多标签共同窗口，加上单实例任务窗口，共同组成六窗口协作界面。
 
 ## 核心能力
 

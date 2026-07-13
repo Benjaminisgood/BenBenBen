@@ -11,7 +11,8 @@ struct BenBenBenApp: App {
             BenBenBenSettingsView(
                 voiceInteraction: model.voiceInteraction,
                 runtimeCatalog: model.runtimeCatalog,
-                loginItemStore: model.loginItemStore
+                loginItemStore: model.loginItemStore,
+                notchPreferences: model.notchPreferences
             )
                 .environmentObject(model)
         }

@@ -1,4 +1,80 @@
+import Combine
 import Foundation
+
+@MainActor
+final class NotchPreferences: ObservableObject {
+    static let defaultPhysicalWidth = 186.0
+    static let defaultPhysicalHeight = 32.0
+    static let physicalWidthRange = 140.0...260.0
+    static let physicalHeightRange = 18.0...80.0
+
+    private static let widthKey = "benbenben.notch.physicalWidth"
+    private static let heightKey = "benbenben.notch.physicalHeight"
+
+    @Published var physicalWidth: Double {
+        didSet { persistWidth() }
+    }
+    @Published var physicalHeight: Double {
+        didSet { persistHeight() }
+    }
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        physicalWidth = Self.persistedValue(
+            forKey: Self.widthKey,
+            defaultValue: Self.defaultPhysicalWidth,
+            range: Self.physicalWidthRange,
+            defaults: defaults
+        )
+        physicalHeight = Self.persistedValue(
+            forKey: Self.heightKey,
+            defaultValue: Self.defaultPhysicalHeight,
+            range: Self.physicalHeightRange,
+            defaults: defaults
+        )
+    }
+
+    func restoreDefaults() {
+        physicalWidth = Self.defaultPhysicalWidth
+        physicalHeight = Self.defaultPhysicalHeight
+    }
+
+    private func persistWidth() {
+        let normalized = Self.clamp(physicalWidth, to: Self.physicalWidthRange)
+        if physicalWidth != normalized {
+            physicalWidth = normalized
+            return
+        }
+        defaults.set(normalized, forKey: Self.widthKey)
+    }
+
+    private func persistHeight() {
+        let normalized = Self.clamp(physicalHeight, to: Self.physicalHeightRange)
+        if physicalHeight != normalized {
+            physicalHeight = normalized
+            return
+        }
+        defaults.set(normalized, forKey: Self.heightKey)
+    }
+
+    private static func persistedValue(
+        forKey key: String,
+        defaultValue: Double,
+        range: ClosedRange<Double>,
+        defaults: UserDefaults
+    ) -> Double {
+        guard let number = defaults.object(forKey: key) as? NSNumber else {
+            return defaultValue
+        }
+        return clamp(number.doubleValue, to: range)
+    }
+
+    private static func clamp(_ value: Double, to range: ClosedRange<Double>) -> Double {
+        min(max(value.isFinite ? value : range.lowerBound, range.lowerBound), range.upperBound)
+    }
+}
 
 enum CompanionActivityLevel: String, CaseIterable, Identifiable, Sendable {
     case quiet

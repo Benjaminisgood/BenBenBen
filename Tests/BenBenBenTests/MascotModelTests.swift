@@ -12,10 +12,11 @@ final class MascotModelTests: XCTestCase {
 
         XCTAssertEqual(model.state, .listening)
         XCTAssertEqual(model.presentedState, .listening)
+        XCTAssertEqual(model.presentedMotion, .listeningPerk)
         XCTAssertEqual(model.presentationRevision, firstRevision)
     }
 
-    func testWakingDragonStopsAmbientPlayUntilCollapsedAgain() {
+    func testVoiceConversationStopsAmbientPlayUntilPausedAgain() {
         let model = MascotModel()
 
         XCTAssertTrue(model.isAmbientBehaviorRunning)
@@ -61,7 +62,7 @@ final class MascotModelTests: XCTestCase {
         XCTAssertEqual(model.presentedState, .walkLeft)
     }
 
-    func testDragonClickDoesNotWakeCollapsedDragon() {
+    func testRestingActionDoesNotChangeConversationState() {
         let model = MascotModel()
 
         model.cycleRestingAction()
@@ -81,5 +82,24 @@ final class MascotModelTests: XCTestCase {
         XCTAssertEqual(model.state, .listening)
         XCTAssertEqual(model.presentedState, .listening)
         XCTAssertEqual(model.presentationRevision, revision)
+    }
+
+    func testOperationalStatesProvideMultipleDedicatedMotions() {
+        XCTAssertEqual(
+            MascotState.listening.motionSequence,
+            [.listeningPerk, .listeningNod, .listeningLean]
+        )
+        XCTAssertEqual(
+            MascotState.thinking.motionSequence,
+            [.thinkingPonder, .thinkingTrace, .thinkingIdea]
+        )
+        XCTAssertEqual(
+            MascotState.working.motionSequence,
+            [.workingFocus, .workingTap, .workingSprint]
+        )
+        XCTAssertEqual(MascotState.waitingApproval.motionSequence.count, 2)
+        XCTAssertEqual(MascotState.success.motionSequence.count, 2)
+        XCTAssertEqual(MascotState.error.motionSequence.count, 2)
+        XCTAssertEqual(MascotState.sleep.motionSequence, [.offlineBreathing])
     }
 }

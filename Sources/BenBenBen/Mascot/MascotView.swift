@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 struct MascotView: View {
     let state: MascotState
+    let motion: MascotMotion
     var size: CGFloat = 42
     var revision = 0
 
@@ -23,26 +24,26 @@ struct MascotView: View {
         }
         .frame(width: size, height: size)
         .scaleEffect(
-            x: reduceMotion ? 1 : state.motionScaleX(phase: motionPhase),
-            y: reduceMotion ? 1 : state.motionScaleY(phase: motionPhase),
+            x: reduceMotion ? 1 : motion.scaleX(phase: motionPhase, state: state),
+            y: reduceMotion ? 1 : motion.scaleY(phase: motionPhase, state: state),
             anchor: .bottom
         )
         .rotationEffect(
-            .degrees(reduceMotion ? 0 : state.motionRotation(phase: motionPhase)),
+            .degrees(reduceMotion ? 0 : motion.rotation(phase: motionPhase, state: state)),
             anchor: .bottom
         )
         .offset(
-            x: reduceMotion ? 0 : state.motionOffsetX(phase: motionPhase),
-            y: reduceMotion ? 0 : state.motionOffsetY(phase: motionPhase)
+            x: reduceMotion ? 0 : motion.offsetX(phase: motionPhase, state: state),
+            y: reduceMotion ? 0 : motion.offsetY(phase: motionPhase, state: state)
         )
         .animation(
             reduceMotion
                 ? nil
-                : .easeInOut(duration: state.motionDuration)
+                : .easeInOut(duration: motion.duration(for: state))
                     .repeatForever(autoreverses: true),
             value: motionPhase
         )
-        .task(id: MotionTrigger(state: state, revision: revision, reduceMotion: reduceMotion)) {
+        .task(id: MotionTrigger(state: state, motion: motion, revision: revision, reduceMotion: reduceMotion)) {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
@@ -64,71 +65,143 @@ struct MascotView: View {
 
 private struct MotionTrigger: Equatable {
     let state: MascotState
+    let motion: MascotMotion
     let revision: Int
     let reduceMotion: Bool
 }
 
-private extension MascotState {
-    var motionDuration: Double {
+private extension MascotMotion {
+    func duration(for state: MascotState) -> Double {
         switch self {
-        case .walkLeft, .walkRight: return 0.22
-        case .cameraShutter: return 0.16
-        case .working: return 0.42
-        case .music: return 0.48
-        case .stretch: return 0.70
-        case .rest, .sleep, .cloudWatch, .stargaze: return 2.4
-        case .bubbles: return 1.2
-        default: return 1.7
+        case .listeningPerk: return 0.52
+        case .listeningNod: return 0.40
+        case .listeningLean: return 0.68
+        case .thinkingPonder: return 0.92
+        case .thinkingTrace: return 0.58
+        case .thinkingIdea: return 0.44
+        case .workingFocus: return 0.40
+        case .workingTap: return 0.25
+        case .workingSprint: return 0.32
+        case .approvalWave: return 0.48
+        case .approvalWait: return 1.25
+        case .successHop: return 0.34
+        case .successDance: return 0.28
+        case .errorSlump: return 1.25
+        case .errorShake: return 0.17
+        case .offlineBreathing: return 2.4
+        case .idleBreathing: return 1.7
+        case .ambient:
+            switch state {
+            case .walkLeft, .walkRight: return 0.22
+            case .cameraShutter: return 0.16
+            case .music: return 0.48
+            case .stretch: return 0.70
+            case .rest, .sleep, .cloudWatch, .stargaze: return 2.4
+            case .bubbles: return 1.2
+            default: return 1.7
+            }
         }
     }
 
-    func motionScaleX(phase: Bool) -> CGFloat {
+    func scaleX(phase: Bool, state: MascotState) -> CGFloat {
         switch self {
-        case .cameraShutter: return phase ? 0.99 : 1.01
-        case .stretch: return phase ? 1.018 : 0.99
+        case .thinkingIdea, .successHop: return phase ? 1.035 : 0.985
+        case .workingSprint: return phase ? 1.02 : 0.99
+        case .errorSlump: return phase ? 0.985 : 1
+        case .ambient where state == .cameraShutter: return phase ? 0.99 : 1.01
+        case .ambient where state == .stretch: return phase ? 1.018 : 0.99
         default: return 1
         }
     }
 
-    func motionScaleY(phase: Bool) -> CGFloat {
+    func scaleY(phase: Bool, state: MascotState) -> CGFloat {
         switch self {
-        case .walkLeft, .walkRight: return phase ? 1.018 : 0.982
-        case .stretch: return phase ? 1.045 : 0.985
-        case .rest, .sleep: return phase ? 1.012 : 0.992
-        case .daydream, .cloudWatch, .rain: return phase ? 1 : 0.992
-        default: return phase ? 1.025 : 0.985
+        case .idleBreathing: return phase ? 1.015 : 0.99
+        case .listeningPerk: return phase ? 1.035 : 0.985
+        case .listeningNod: return phase ? 1.018 : 0.992
+        case .thinkingIdea: return phase ? 1.045 : 0.98
+        case .workingFocus, .workingTap, .workingSprint: return phase ? 1.025 : 0.985
+        case .approvalWait, .offlineBreathing: return phase ? 1.012 : 0.992
+        case .successHop: return phase ? 1.04 : 0.98
+        case .errorSlump: return phase ? 0.965 : 0.99
+        case .ambient:
+            switch state {
+            case .walkLeft, .walkRight: return phase ? 1.018 : 0.982
+            case .stretch: return phase ? 1.045 : 0.985
+            case .rest, .sleep: return phase ? 1.012 : 0.992
+            case .daydream, .cloudWatch, .rain: return phase ? 1 : 0.992
+            default: return phase ? 1.025 : 0.985
+            }
+        default: return 1
         }
     }
 
-    func motionRotation(phase: Bool) -> Double {
+    func rotation(phase: Bool, state: MascotState) -> Double {
         switch self {
-        case .cameraReady: return phase ? 0.45 : -0.45
-        case .cameraShutter: return phase ? -1.2 : 0.4
-        case .teaSip: return phase ? -1.4 : -0.4
-        case .music: return phase ? 1.4 : -1.4
-        case .bubbles: return phase ? 0.8 : -0.8
+        case .listeningNod: return phase ? 1.8 : -0.6
+        case .listeningLean: return phase ? 2.4 : -2.4
+        case .thinkingPonder: return phase ? 1.6 : -1.6
+        case .thinkingTrace: return phase ? 0.8 : -0.8
+        case .workingTap: return phase ? 1.0 : -1.0
+        case .workingSprint: return phase ? -2.0 : 0.5
+        case .approvalWave: return phase ? 2.3 : -1.2
+        case .successDance: return phase ? 3.0 : -3.0
+        case .errorSlump: return phase ? -1.2 : 0.3
+        case .ambient:
+            switch state {
+            case .cameraReady: return phase ? 0.45 : -0.45
+            case .cameraShutter: return phase ? -1.2 : 0.4
+            case .teaSip: return phase ? -1.4 : -0.4
+            case .music: return phase ? 1.4 : -1.4
+            case .bubbles: return phase ? 0.8 : -0.8
+            default: return 0
+            }
         default: return 0
         }
     }
 
-    func motionOffsetX(phase: Bool) -> CGFloat {
+    func offsetX(phase: Bool, state: MascotState) -> CGFloat {
         switch self {
-        case .walkLeft: return phase ? -2.6 : 1.0
-        case .walkRight: return phase ? 2.6 : -1.0
-        case .cameraShutter: return phase ? -1.2 : 0
-        case .music: return phase ? 0.8 : -0.8
-        case .bubbles: return phase ? 0.7 : -0.7
+        case .listeningLean: return phase ? 1.1 : -1.1
+        case .thinkingPonder: return phase ? 1.1 : -1.1
+        case .thinkingTrace: return phase ? 1.5 : -1.5
+        case .workingTap: return phase ? 0.9 : -0.9
+        case .workingSprint: return phase ? 1.4 : -0.2
+        case .approvalWave: return phase ? 0.8 : -0.4
+        case .successDance: return phase ? 1.2 : -1.2
+        case .errorShake: return phase ? 1.8 : -1.8
+        case .ambient:
+            switch state {
+            case .walkLeft: return phase ? -2.6 : 1.0
+            case .walkRight: return phase ? 2.6 : -1.0
+            case .cameraShutter: return phase ? -1.2 : 0
+            case .music: return phase ? 0.8 : -0.8
+            case .bubbles: return phase ? 0.7 : -0.7
+            default: return 0
+            }
         default: return 0
         }
     }
 
-    func motionOffsetY(phase: Bool) -> CGFloat {
+    func offsetY(phase: Bool, state: MascotState) -> CGFloat {
         switch self {
-        case .working: return phase ? -1.5 : 0
-        case .walkLeft, .walkRight: return phase ? -1.4 : 0
-        case .music: return phase ? -1.0 : 0
-        case .stretch: return phase ? -1.8 : 0
-        case .cameraShutter: return phase ? 0.7 : 0
+        case .listeningPerk: return phase ? -1.2 : 0
+        case .listeningNod: return phase ? 0.9 : -0.4
+        case .thinkingTrace: return phase ? -0.7 : 0
+        case .thinkingIdea: return phase ? -2.2 : 0
+        case .workingFocus: return phase ? -1.5 : 0
+        case .workingTap: return phase ? -0.8 : 0
+        case .workingSprint: return phase ? -1.3 : 0
+        case .successHop: return phase ? -3.0 : 0
+        case .errorSlump: return phase ? 1.2 : 0
+        case .ambient:
+            switch state {
+            case .walkLeft, .walkRight: return phase ? -1.4 : 0
+            case .music: return phase ? -1.0 : 0
+            case .stretch: return phase ? -1.8 : 0
+            case .cameraShutter: return phase ? 0.7 : 0
+            default: return 0
+            }
         default: return 0
         }
     }

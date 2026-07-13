@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -19,21 +20,25 @@ final class NotchPanelController: NSObject {
     let mascotModel: MascotModel
     let voiceInteraction: VoiceInteractionController
     let agentContext: NotchAgentContext
+    let preferences: NotchPreferences
 
     private let panel: NotchPanel
     private let onSelectTask: (String) -> Void
     private var hostingView: NSHostingView<NotchCompanionView>?
     private var cachedLayout: NotchLayout?
+    private var preferenceCancellable: AnyCancellable?
 
     init(
         mascotModel: MascotModel = MascotModel(),
         voiceInteraction: VoiceInteractionController = VoiceInteractionController(),
         agentContext: NotchAgentContext = NotchAgentContext(),
+        preferences: NotchPreferences = NotchPreferences(),
         onSelectTask: @escaping (String) -> Void = { _ in }
     ) {
         self.mascotModel = mascotModel
         self.voiceInteraction = voiceInteraction
         self.agentContext = agentContext
+        self.preferences = preferences
         self.onSelectTask = onSelectTask
         panel = NotchPanel(
             contentRect: .zero,
@@ -46,6 +51,7 @@ final class NotchPanelController: NSObject {
         configurePanel()
         rebuildContent()
         observeScreenChanges()
+        observePreferences()
     }
 
     func showDocked() {
@@ -131,14 +137,37 @@ final class NotchPanelController: NSObject {
         )
     }
 
+    private func observePreferences() {
+        preferenceCancellable = preferences.$physicalWidth
+            .combineLatest(preferences.$physicalHeight)
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.preferencesChanged()
+            }
+    }
+
     @objc private func screenParametersChanged(_ notification: Notification) {
         let layout = currentLayout()
         rebuildContent(layout: layout)
         panel.setFrame(panelFrame(for: layout), display: true)
     }
 
+    private func preferencesChanged() {
+        let layout = currentLayout()
+        rebuildContent(layout: layout)
+        panel.setFrame(panelFrame(for: layout), display: true)
+        panel.orderFrontRegardless()
+    }
+
     private func currentLayout() -> NotchLayout {
-        NotchGeometry.layout(for: targetScreen())
+        NotchGeometry.layout(
+            for: targetScreen(),
+            physicalNotchOverride: NSSize(
+                width: preferences.physicalWidth,
+                height: preferences.physicalHeight
+            )
+        )
     }
 
     private func targetScreen() -> NSScreen? {

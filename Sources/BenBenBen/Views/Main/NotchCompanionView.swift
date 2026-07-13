@@ -25,6 +25,7 @@ struct NotchCompanionView: View {
 
             MascotView(
                 state: mascotModel.presentedState,
+                motion: mascotModel.presentedMotion,
                 size: dragonSize,
                 revision: mascotModel.presentationRevision
             )
@@ -71,18 +72,18 @@ struct NotchCompanionView: View {
                     }
                 )
                 .scaleEffect(0.58, anchor: .top)
-                .offset(y: 35)
+                .offset(y: max(0, layout.mascotTopOffset - 5))
                 .zIndex(2)
             }
         }
     }
 
     private var dragonSize: CGFloat {
-        min(88, max(80, layout.panelSize.height * 0.63))
+        layout.mascotSize
     }
 
     private var dragonTopOffset: CGFloat {
-        16
+        layout.mascotTopOffset
     }
 
     private func toggleVoiceConversation() {

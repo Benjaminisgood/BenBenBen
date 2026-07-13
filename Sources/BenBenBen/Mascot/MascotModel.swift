@@ -5,6 +5,7 @@ import Foundation
 final class MascotModel: ObservableObject {
     @Published private(set) var state: MascotState = .idle
     @Published private(set) var presentedState: MascotState = .idle
+    @Published private(set) var presentedMotion: MascotMotion = .idleBreathing
     @Published private(set) var presentationRevision = 0
     @Published private(set) var bubbleText: String?
     @Published private(set) var relatedThreadID: String?
@@ -14,13 +15,15 @@ final class MascotModel: ObservableObject {
     private var transientTask: Task<Void, Never>?
     private var ambientTask: Task<Void, Never>?
     private var interactionTask: Task<Void, Never>?
+    private var operationalMotionTask: Task<Void, Never>?
     private var lastAmbientMoment: AmbientMoment?
     private var previouslyRunningThreadIDs = Set<String>()
-    private var voiceOverride = false
+    private var voiceListening = false
     private var latestApprovals: [AgentRequestID: AgentApprovalRequest] = [:]
     private var latestTurns: [String: AgentTurn] = [:]
     private var latestConnection: AgentConnectionState = .disconnected
     private var latestError: String?
+    private var hasAgentSnapshot = false
 
     var isAmbientBehaviorRunning: Bool {
         ambientTask != nil
@@ -67,19 +70,24 @@ final class MascotModel: ObservableObject {
         }
     }
 
-    func setListening(_ listening: Bool) {
-        voiceOverride = listening
+    func setListening(_ listening: Bool, resumesAgentStateImmediately: Bool = false) {
+        voiceListening = listening
         transientTask?.cancel()
         if listening {
-            applyBusinessState(.listening, bubble: "我在听，停顿后就会发送")
-        } else if state == .listening {
+            if hasAgentSnapshot {
+                synchronizeLatestAgentState()
+            } else {
+                applyBusinessState(.listening, bubble: "我在听，停顿后就会发送")
+            }
+        } else if state == .listening && !resumesAgentStateImmediately {
             applyBusinessState(.thinking, bubble: "正在听写…")
+        } else {
             synchronizeLatestAgentState()
         }
     }
 
     func showVoiceCountdown(text: String, seconds: Int) {
-        guard !voiceOverride else { return }
+        guard !voiceListening else { return }
         switch state {
         case .working, .waitingApproval, .error:
             return
@@ -91,7 +99,7 @@ final class MascotModel: ObservableObject {
     }
 
     func showError(_ message: String) {
-        voiceOverride = false
+        voiceListening = false
         transientTask?.cancel()
         applyBusinessState(.error, bubble: message)
         scheduleReturnToIdle(after: .seconds(5))
@@ -112,7 +120,7 @@ final class MascotModel: ObservableObject {
     func startAmbientBehavior() {
         guard state == .idle,
               !isAwake,
-              !voiceOverride,
+              !voiceListening,
               ambientTask == nil,
               interactionTask == nil else { return }
 
@@ -127,14 +135,14 @@ final class MascotModel: ObservableObject {
                 guard let self,
                       self.state == .idle,
                       !self.isAwake,
-                      !self.voiceOverride else { return }
+                      !self.voiceListening else { return }
                 let moment = AmbientMoment.random(avoiding: self.lastAmbientMoment)
                 self.lastAmbientMoment = moment
 
                 for frame in moment.frames {
                     guard self.state == .idle,
                           !self.isAwake,
-                          !self.voiceOverride,
+                          !self.voiceListening,
                           self.interactionTask == nil else { return }
                     self.present(frame.pose, restartingAnimation: true)
 
@@ -147,7 +155,7 @@ final class MascotModel: ObservableObject {
 
                 guard self.state == .idle,
                       !self.isAwake,
-                      !self.voiceOverride,
+                      !self.voiceListening,
                       self.interactionTask == nil else { return }
                 self.present(.idle)
             }
@@ -157,7 +165,7 @@ final class MascotModel: ObservableObject {
     /// A dragon click only changes its current idle activity. It never opens,
     /// closes, or focuses the notch conversation surface.
     func cycleRestingAction() {
-        guard state == .idle, !voiceOverride else { return }
+        guard state == .idle, !voiceListening else { return }
 
         relatedThreadID = nil
         bubbleText = nil
@@ -176,7 +184,7 @@ final class MascotModel: ObservableObject {
                     guard let self,
                           !Task.isCancelled,
                           self.state == .idle,
-                          !self.voiceOverride else { return }
+                          !self.voiceListening else { return }
                     self.present(frame.pose, restartingAnimation: true)
                     try await Task.sleep(for: frame.duration)
                 }
@@ -187,7 +195,7 @@ final class MascotModel: ObservableObject {
             guard let self,
                   !Task.isCancelled,
                   self.state == .idle,
-                  !self.voiceOverride else { return }
+                  !self.voiceListening else { return }
             self.interactionTask = nil
             self.present(.idle)
             self.startAmbientBehavior()
@@ -204,8 +212,7 @@ final class MascotModel: ObservableObject {
         latestTurns = turns
         latestConnection = connection
         latestError = error
-        guard !voiceOverride else { return }
-
+        hasAgentSnapshot = true
         if let approval = approvals.values.first {
             transientTask?.cancel()
             applyBusinessState(
@@ -235,7 +242,7 @@ final class MascotModel: ObservableObject {
             transientTask?.cancel()
             previouslyRunningThreadIDs.removeAll()
             applyBusinessState(.success, bubble: "完成了，点我看看", relatedThreadID: completedThreadID)
-            scheduleReturnToIdle(after: .seconds(4))
+            scheduleReturnToIdle(after: .seconds(4), resynchronize: true)
             return
         }
 
@@ -244,7 +251,9 @@ final class MascotModel: ObservableObject {
             transientTask?.cancel()
             applyBusinessState(.thinking, bubble: "正在连接 Codex")
         case .ready:
-            if state != .success {
+            if voiceListening {
+                applyBusinessState(.listening, bubble: "我在听，停顿后就会发送")
+            } else if state != .success {
                 applyBusinessState(.idle, bubble: nil)
             }
         case .disconnected:
@@ -255,13 +264,17 @@ final class MascotModel: ObservableObject {
         }
     }
 
-    private func scheduleReturnToIdle(after duration: Duration) {
+    private func scheduleReturnToIdle(after duration: Duration, resynchronize: Bool = false) {
         transientTask?.cancel()
         transientTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: duration)
-            guard !Task.isCancelled else { return }
-            self?.transientTask = nil
-            self?.applyBusinessState(.idle, bubble: nil)
+            guard !Task.isCancelled, let self else { return }
+            self.transientTask = nil
+            if resynchronize {
+                self.synchronizeLatestAgentState()
+            } else {
+                self.applyBusinessState(.idle, bubble: nil)
+            }
         }
     }
 
@@ -279,11 +292,16 @@ final class MascotModel: ObservableObject {
         bubble: String?,
         relatedThreadID: String? = nil
     ) {
+        let stateChanged = state != newState
+        if stateChanged {
+            stopOperationalMotion()
+        }
         state = newState
         bubbleText = bubble
         self.relatedThreadID = relatedThreadID
 
         if newState == .idle {
+            stopOperationalMotion()
             if interactionTask == nil {
                 present(.idle)
                 startAmbientBehavior()
@@ -293,13 +311,43 @@ final class MascotModel: ObservableObject {
             interactionTask = nil
             stopAmbientBehavior()
             present(newState)
+            startOperationalMotion(for: newState)
         }
     }
 
     private func present(_ newState: MascotState, restartingAnimation: Bool = false) {
-        guard restartingAnimation || presentedState != newState else { return }
+        let stateChanged = presentedState != newState
+        guard restartingAnimation || stateChanged else { return }
         presentedState = newState
+        presentedMotion = newState.motionSequence[0]
         presentationRevision &+= 1
+    }
+
+    private func startOperationalMotion(for state: MascotState) {
+        let sequence = state.motionSequence
+        guard sequence.count > 1, operationalMotionTask == nil else { return }
+
+        operationalMotionTask = Task { @MainActor [weak self] in
+            var index = sequence.firstIndex(of: self?.presentedMotion ?? sequence[0]) ?? 0
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: state.motionChangeInterval)
+                } catch {
+                    return
+                }
+                guard let self,
+                      self.state == state,
+                      self.presentedState == state else { return }
+                index = (index + 1) % sequence.count
+                self.presentedMotion = sequence[index]
+                self.presentationRevision &+= 1
+            }
+        }
+    }
+
+    private func stopOperationalMotion() {
+        operationalMotionTask?.cancel()
+        operationalMotionTask = nil
     }
 
     private func stopAmbientBehavior() {

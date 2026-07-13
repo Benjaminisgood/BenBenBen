@@ -59,4 +59,47 @@ final class NotchGeometryTests: XCTestCase {
         )
         XCTAssertEqual(layout.topOffset, 0)
     }
+
+    func testConfiguredPhysicalNotchHeightPreservesFixedMascotArea() {
+        let layout = NotchGeometry.layout(
+            screenFrame: NSRect(x: 0, y: 0, width: 1512, height: 982),
+            visibleFrame: NSRect(x: 0, y: 40, width: 1512, height: 918),
+            measuredNotchSize: NSSize(width: 210, height: 32),
+            physicalNotchOverride: NSSize(width: 186, height: 44)
+        )
+
+        XCTAssertEqual(layout.notchSize, NSSize(width: 186, height: 44))
+        XCTAssertEqual(layout.panelSize, NSSize(width: 186, height: 152))
+        XCTAssertEqual(
+            layout.panelSize.height - layout.notchSize.height,
+            NotchGeometry.companionContentHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(layout.mascotSafeTopInset, 52, accuracy: 0.001)
+        XCTAssertEqual(layout.mascotSize, 88, accuracy: 0.001)
+        XCTAssertEqual(layout.mascotTopOffset, 52, accuracy: 0.001)
+        XCTAssertEqual(
+            layout.mascotTopOffset - layout.notchSize.height,
+            NotchLayout.mascotMotionSafetyInset,
+            accuracy: 0.001
+        )
+    }
+
+    @MainActor
+    func testPhysicalNotchPreferencesPersist() throws {
+        let suiteName = "NotchPreferencesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = NotchPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.physicalWidth, 186)
+        XCTAssertEqual(preferences.physicalHeight, 32)
+
+        preferences.physicalWidth = 192
+        preferences.physicalHeight = 70
+
+        let reloaded = NotchPreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.physicalWidth, 192)
+        XCTAssertEqual(reloaded.physicalHeight, 70)
+    }
 }

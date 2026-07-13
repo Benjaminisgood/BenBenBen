@@ -5,6 +5,7 @@ struct BenBenBenSettingsView: View {
     @ObservedObject var voiceInteraction: VoiceInteractionController
     @ObservedObject var runtimeCatalog: RuntimeCatalogStore
     @ObservedObject var loginItemStore: LoginItemStore
+    @ObservedObject var notchPreferences: NotchPreferences
     @EnvironmentObject private var model: AppModel
 
     @AppStorage("benbenben.codexExecutable") private var codexExecutable = ""
@@ -38,6 +39,37 @@ struct BenBenBenSettingsView: View {
                 Text(model.activityLevel.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Section("物理刘海") {
+                    LabeledContent("物理刘海宽度") {
+                        Stepper(
+                            "\(Int(notchPreferences.physicalWidth)) pt",
+                            value: $notchPreferences.physicalWidth,
+                            in: NotchPreferences.physicalWidthRange,
+                            step: 1
+                        )
+                        .monospacedDigit()
+                    }
+                    LabeledContent("物理刘海高度") {
+                        Stepper(
+                            "\(Int(notchPreferences.physicalHeight)) pt",
+                            value: $notchPreferences.physicalHeight,
+                            in: NotchPreferences.physicalHeightRange,
+                            step: 1
+                        )
+                        .monospacedDigit()
+                    }
+                    LabeledContent("黑色面板总高") {
+                        Text("\(Int(notchPreferences.physicalHeight + NotchGeometry.companionContentHeight)) pt")
+                            .monospacedDigit()
+                    }
+                    Button("恢复默认物理刘海 186 × 32") {
+                        notchPreferences.restoreDefaults()
+                    }
+                    Text("面板宽度跟随物理刘海宽度；总高自动等于物理刘海高度加 108 pt 固定龙活动区。调整物理高度只会整体下移活动区，不会压缩龙。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 LabeledContent("永久内容目录") {
                     HStack(spacing: 8) {

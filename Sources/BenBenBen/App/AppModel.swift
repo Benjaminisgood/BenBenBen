@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
     let agentContext: NotchAgentContext
     let runtimeCatalog: RuntimeCatalogStore
     let loginItemStore: LoginItemStore
+    let notchPreferences: NotchPreferences
 
     @Published private(set) var didStart = false
     @Published private(set) var agentStore: AgentStore?
@@ -43,6 +44,7 @@ final class AppModel: ObservableObject {
         mascotModel: mascotModel,
         voiceInteraction: voiceInteraction,
         agentContext: agentContext,
+        preferences: notchPreferences,
         onSelectTask: { [weak self] threadID in
             self?.showTaskWindow(threadID: threadID)
         }
@@ -55,12 +57,16 @@ final class AppModel: ObservableObject {
         agentContext = NotchAgentContext()
         runtimeCatalog = RuntimeCatalogStore()
         loginItemStore = LoginItemStore()
+        notchPreferences = NotchPreferences()
         WorkspacePaths.ensureDirectories()
 
         voiceInteraction.onStateChanged = { [weak mascotModel, weak voiceInteraction] listening in
-            // Continuous listening is ambient infrastructure. Keep operational
-            // Codex states visible instead of pinning the dragon in "listening".
-            mascotModel?.setListening(listening && voiceInteraction?.isConversationEnabled != true)
+            let conversationEnabled = voiceInteraction?.isConversationEnabled == true
+            mascotModel?.setAwake(conversationEnabled)
+            mascotModel?.setListening(
+                listening && conversationEnabled,
+                resumesAgentStateImmediately: !conversationEnabled
+            )
         }
         voiceInteraction.onCountdownChanged = { [weak mascotModel] text, seconds in
             mascotModel?.showVoiceCountdown(text: text, seconds: seconds)
@@ -79,6 +85,7 @@ final class AppModel: ObservableObject {
     func start() {
         guard !didStart else { return }
         didStart = true
+        mascotModel.setAwake(voiceInteraction.isConversationEnabled)
         notchController.showDocked()
         voiceInteraction.activatePersistentListeningIfNeeded()
         Task {

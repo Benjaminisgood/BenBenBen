@@ -72,3 +72,65 @@ enum MascotState: String, CaseIterable, Codable, Sendable {
         }
     }
 }
+
+/// Named motion choreography layered on top of each state-specific dragon
+/// illustration. Operational states rotate through several motions so the
+/// dragon communicates what it is doing without textual status labels.
+enum MascotMotion: String, CaseIterable, Sendable {
+    case idleBreathing
+    case listeningPerk
+    case listeningNod
+    case listeningLean
+    case thinkingPonder
+    case thinkingTrace
+    case thinkingIdea
+    case workingFocus
+    case workingTap
+    case workingSprint
+    case approvalWave
+    case approvalWait
+    case successHop
+    case successDance
+    case errorSlump
+    case errorShake
+    case offlineBreathing
+    case ambient
+}
+
+extension MascotState {
+    var motionSequence: [MascotMotion] {
+        switch self {
+        case .idle:
+            return [.idleBreathing]
+        case .listening:
+            return [.listeningPerk, .listeningNod, .listeningLean]
+        case .thinking:
+            return [.thinkingPonder, .thinkingTrace, .thinkingIdea]
+        case .working:
+            return [.workingFocus, .workingTap, .workingSprint]
+        case .waitingApproval:
+            return [.approvalWave, .approvalWait]
+        case .success:
+            return [.successHop, .successDance]
+        case .error:
+            return [.errorSlump, .errorShake]
+        case .sleep:
+            return [.offlineBreathing]
+        default:
+            return [.ambient]
+        }
+    }
+
+    var motionChangeInterval: Duration {
+        switch self {
+        case .listening: return .milliseconds(1_350)
+        case .thinking: return .milliseconds(1_700)
+        case .working: return .milliseconds(1_150)
+        case .waitingApproval: return .milliseconds(1_900)
+        case .success: return .milliseconds(850)
+        case .error: return .milliseconds(1_500)
+        case .sleep: return .milliseconds(2_600)
+        default: return .seconds(3)
+        }
+    }
+}
