@@ -78,7 +78,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var agentConversation: [String: [AgentConversationEntry]] = [:]
 
     private var agentBootstrapTask: Task<Void, Never>?
-    private var voiceReplyThreadID: String?
     private var archivedAgentTurnIDs = Set<String>()
     private var proactiveAgentTurnIDs = Set<String>()
     private var artifactBaselines: [String: AgentArtifactSnapshot] = [:]
@@ -302,8 +301,7 @@ final class AppModel: ObservableObject {
             proactiveAgentTurnIDs.insert(turnKey)
         }
         if voiceInitiated {
-            voiceReplyThreadID = sent.threadID
-            voiceInteraction.speakVoiceInitiatedReply("收到，我开始处理这个任务。")
+            voiceInteraction.speakConversationReply("收到，我开始处理这个任务。")
         }
         agentConversation[sent.threadID, default: []].append(
             AgentConversationEntry(role: .user, text: prompt)
@@ -326,16 +324,13 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if voiceInitiated {
-            voiceReplyThreadID = threadID
-        }
         agentConversation[threadID, default: []].append(
             AgentConversationEntry(role: .user, text: text)
         )
         Task {
             let accepted = await store.steer(text, threadID: threadID, turnID: activeTurn.id)
             if accepted, voiceInitiated {
-                voiceInteraction.speakVoiceInitiatedReply("收到，我会按你的新要求继续。")
+                voiceInteraction.speakConversationReply("收到，我会按你的新要求继续。")
             }
         }
     }
@@ -386,11 +381,8 @@ final class AppModel: ObservableObject {
                         )
                     }
                     if shouldSurface,
-                       self.voiceInteraction.speaksVoiceReplies,
-                       (self.voiceReplyThreadID == threadID
-                            || self.voiceInteraction.isConversationEnabled) {
-                        self.voiceReplyThreadID = nil
-                        self.voiceInteraction.speakVoiceInitiatedReply(visibleMessage)
+                       self.voiceInteraction.canSpeakReplies {
+                        self.voiceInteraction.speakConversationReply(visibleMessage)
                     }
                     if isProactive, shouldSurface {
                         self.showNotch()

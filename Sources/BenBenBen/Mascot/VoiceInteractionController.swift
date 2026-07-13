@@ -178,8 +178,15 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
         speechSynthesizer.stopSpeaking(at: .immediate)
     }
 
-    func speakVoiceInitiatedReply(_ text: String) {
-        guard speaksVoiceReplies else { return }
+    var canSpeakReplies: Bool {
+        Self.shouldSpeakReplies(
+            conversationEnabled: isConversationEnabled,
+            preferenceEnabled: speaksVoiceReplies
+        )
+    }
+
+    func speakConversationReply(_ text: String) {
+        guard canSpeakReplies else { return }
         let summary = Self.shortSpokenSummary(text)
         guard !summary.isEmpty else { return }
         if speechSynthesizer.isSpeaking {
@@ -195,6 +202,13 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
         utterance.rate = 0.48
         isSpeaking = true
         speechSynthesizer.speak(utterance)
+    }
+
+    nonisolated static func shouldSpeakReplies(
+        conversationEnabled: Bool,
+        preferenceEnabled: Bool
+    ) -> Bool {
+        conversationEnabled && preferenceEnabled
     }
 
     nonisolated func speechSynthesizer(

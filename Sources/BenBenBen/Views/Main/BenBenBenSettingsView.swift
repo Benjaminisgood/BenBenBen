@@ -53,7 +53,10 @@ struct BenBenBenSettingsView: View {
                         set: { voiceInteraction.setConversationEnabled($0) }
                     )
                 )
-                Toggle("Speak short replies", isOn: $voiceInteraction.speaksVoiceReplies)
+                Toggle(
+                    "Speak task results during voice calls",
+                    isOn: $voiceInteraction.speaksVoiceReplies
+                )
                 Toggle(
                     "Observe and react to screen changes",
                     isOn: Binding(
