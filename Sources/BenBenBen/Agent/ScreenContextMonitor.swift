@@ -27,24 +27,44 @@ final class ScreenContextMonitor: ObservableObject {
 
     @Published private(set) var status: Status = .off
     @Published private(set) var latestScreenshotURL: URL?
-    @Published var isEnabled: Bool {
+    @Published private(set) var isEnabled = false
+    @Published var allowsVoiceActivation: Bool {
         didSet {
-            UserDefaults.standard.set(isEnabled, forKey: Self.enabledKey)
-            isEnabled ? start() : stop()
+            UserDefaults.standard.set(allowsVoiceActivation, forKey: Self.voiceActivationKey)
+            if !allowsVoiceActivation { disableSharing() }
         }
     }
 
-    private static let enabledKey = "benbenben.screenContext.enabled"
+    private static let voiceActivationKey = "benbenben.screenContext.voiceActivationAllowed"
     private var captureTask: Task<Void, Never>?
     private var previousSignature: [UInt8]?
     private var lastReactionDate = Date.distantPast
     var onSignificantChange: ((URL) -> Void)?
 
     init() {
-        isEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+        allowsVoiceActivation = UserDefaults.standard.object(forKey: Self.voiceActivationKey) as? Bool ?? true
+    }
+
+    @discardableResult
+    func enableFromVoice() -> Bool {
+        guard allowsVoiceActivation else {
+            status = .failed("设置中未允许口令启动屏幕共享")
+            return false
+        }
+        guard !isEnabled else { return true }
+        isEnabled = true
+        start()
+        return true
+    }
+
+    func disableSharing() {
+        guard isEnabled || captureTask != nil else { return }
+        isEnabled = false
+        stop()
     }
 
     func start() {
+        guard isEnabled else { return }
         guard captureTask == nil else { return }
         status = .requestingPermission
         captureTask = Task { [weak self] in

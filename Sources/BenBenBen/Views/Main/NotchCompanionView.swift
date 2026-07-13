@@ -14,381 +14,175 @@ final class NotchPresentationState: ObservableObject {
     @Published var isExpanded = false
 }
 
-@MainActor
-final class NotchCompanionInteractionState: ObservableObject {
-    @Published var isComposingNewTask = false
-    @Published private(set) var composerFocusRevision = 0
-
-    func requestComposerFocus() {
-        composerFocusRevision &+= 1
-    }
-
-    func beginNewTask() {
-        isComposingNewTask = true
-    }
-}
-
-/// The notch is a character, not a miniature dashboard. A click brings Ben龙
-/// closer; shared artifact windows are opened explicitly from the menu bar.
+/// The physical notch and Ben龙 are one stage. Hovering only grows the black
+/// stage downward; the mascot keeps the same screen position and size so the
+/// compact crop naturally becomes a full-body view.
 struct NotchCompanionView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     @ObservedObject var presentationState: NotchPresentationState
     @ObservedObject var mascotModel: MascotModel
     @ObservedObject var voiceInteraction: VoiceInteractionController
     @ObservedObject var agentContext: NotchAgentContext
     @ObservedObject var screenContext: ScreenContextMonitor
-    @ObservedObject var interactionState: NotchCompanionInteractionState
 
     let layout: NotchLayout
-    let onSendPrompt: (String) -> Void
-    let onStartNewTask: (String) -> Void
-    let onMascotAction: () -> Void
-    let onTaskDetailVisibilityChanged: (Bool) -> Void
-    let onCollapse: () -> Void
-
-    @State private var composer = ""
-    @State private var dragonHasWalkedOut = false
-    @State private var detailThreadID: String?
-    @FocusState private var isComposerFocused: Bool
+    let onSelectTask: (String) -> Void
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
+            background
+
+            MascotView(
+                state: mascotModel.presentedState,
+                size: dragonSize,
+                revision: mascotModel.presentationRevision
+            )
+            .offset(y: dragonTopOffset)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: toggleVoiceConversation)
+            .help(voiceInteraction.isConversationEnabled ? "暂停语音录入" : "开始语音交互")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Ben龙语音按钮")
+            .accessibilityHint(voiceInteraction.isConversationEnabled ? "单击暂停语音录入" : "单击开始语音交互")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { toggleVoiceConversation() }
+            .zIndex(3)
+
             if presentationState.isExpanded {
-                conversationStage.transition(.opacity)
-            } else {
-                dragonBehindNotch
+                expandedOverlay
+                    .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(background)
-        .clipShape(TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18))
+        .clipShape(TopAttachedRoundedShape(radius: presentationState.isExpanded ? 24 : 17))
         .overlay {
-            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18)
-                .stroke(.white.opacity(presentationState.isExpanded ? 0.12 : 0.07), lineWidth: 1)
+            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 24 : 17)
+                .stroke(.white.opacity(presentationState.isExpanded ? 0.13 : 0.06), lineWidth: 1)
         }
-        .contentShape(TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18))
+        .contentShape(TopAttachedRoundedShape(radius: presentationState.isExpanded ? 24 : 17))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ben龙 Codex 伙伴")
-        .accessibilityHint("单击恐龙切换休息动作；刘海收起与展开使用独立控件")
-        .onChange(of: presentationState.isExpanded) { _, expanded in
-            if expanded {
-                dragonHasWalkedOut = reduceMotion
-                if !reduceMotion {
-                    dragonHasWalkedOut = false
-                    withAnimation(.spring(response: 0.72, dampingFraction: 0.72)) {
-                        dragonHasWalkedOut = true
-                    }
-                }
-            } else {
-                dragonHasWalkedOut = false
-            }
-        }
-        .onChange(of: interactionState.composerFocusRevision) { _, _ in
-            guard presentationState.isExpanded else { return }
-            focusComposerAfterExpansion()
-        }
-        .onChange(of: runningTaskIDs) { _, runningIDs in
-            if let detailThreadID, !runningIDs.contains(detailThreadID) {
-                self.detailThreadID = nil
-            }
-        }
-        .onChange(of: detailThreadID) { _, threadID in
-            onTaskDetailVisibilityChanged(threadID != nil)
-        }
     }
 
     private var background: some View {
         ZStack {
-            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18).fill(.ultraThinMaterial)
-            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 30 : 18)
-                .fill(Color.black.opacity(presentationState.isExpanded ? 0.78 : 0.96))
+            TopAttachedRoundedShape(radius: presentationState.isExpanded ? 24 : 17)
+                .fill(Color.black)
             if presentationState.isExpanded {
-                RadialGradient(
-                    colors: [Color.green.opacity(0.13), .clear],
-                    center: .center,
-                    startRadius: 20,
-                    endRadius: 280
+                LinearGradient(
+                    colors: [Color.black, Color(red: 0.015, green: 0.08, blue: 0.045)],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
+                .clipShape(TopAttachedRoundedShape(radius: 24))
             }
         }
     }
 
-    private var dragonBehindNotch: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            MascotView(
-                state: mascotModel.presentedState,
-                size: min(82, layout.compactSize.height * 1.18),
-                revision: mascotModel.presentationRevision
-            )
-            .offset(y: 24)
-            .contentShape(Rectangle())
-            .gesture(mascotTapGesture)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Ben龙休息动作")
-            .accessibilityHint("单击切换休息动作")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { handleMascotClick() }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-    }
-
-    private var conversationStage: some View {
-        VStack(spacing: 0) {
-            HStack {
-                liveStatus
-                Spacer()
-                Button(action: onCollapse) { Image(systemName: "chevron.up") }
-                    .buttonStyle(.plain)
-                    .help("让 Ben龙 回到刘海后面")
+    private var expandedOverlay: some View {
+        ZStack(alignment: .top) {
+            if let store = agentContext.store, !visibleTasks(in: store).isEmpty {
+                DragonTaskThoughtCloud(
+                    threads: visibleTasks(in: store),
+                    store: store,
+                    selectedThreadID: store.selectedThreadID,
+                    isDetailVisible: false,
+                    onSelect: { threadID in
+                        store.selectedThreadID = threadID
+                        onSelectTask(threadID)
+                    }
+                )
+                .scaleEffect(0.82, anchor: .top)
+                .offset(y: 80)
+                .zIndex(2)
+            } else {
+                DragonActionGlyph(state: mascotModel.presentedState)
+                    .scaleEffect(0.72)
+                    .offset(x: 42, y: 66)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
 
-            Spacer(minLength: 4)
-
-            HStack(spacing: 18) {
-                ZStack(alignment: .topTrailing) {
-                    MascotView(
-                        state: mascotModel.presentedState,
-                        size: detailThreadID == nil ? 232 : 196,
-                        revision: mascotModel.presentationRevision
-                    )
-                    .scaleEffect(dragonHasWalkedOut ? 1 : 0.34, anchor: .top)
-                    .offset(y: dragonHasWalkedOut ? 8 : -96)
-                    .contentShape(Rectangle())
-                    .gesture(mascotTapGesture)
-                    .help("单击切换休息动作")
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Ben龙休息动作")
-                    .accessibilityHint("单击切换休息动作")
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityAction { handleMascotClick() }
-
-                    if let agentStore = agentContext.store,
-                       !visibleTasks(in: agentStore).isEmpty {
-                        DragonTaskThoughtCloud(
-                            threads: visibleTasks(in: agentStore),
-                            store: agentStore,
-                            selectedThreadID: agentStore.selectedThreadID,
-                            isDetailVisible: detailThreadID != nil,
-                            onSelect: { threadID in
-                                withAnimation(.snappy(duration: 0.28)) {
-                                    agentStore.selectedThreadID = threadID
-                                    detailThreadID = threadID
-                                }
-                            }
-                        )
-                        .offset(x: detailThreadID == nil ? 112 : 96, y: -82)
-                        .zIndex(4)
-                    } else {
-                        DragonActionGlyph(state: mascotModel.presentedState)
-                            .offset(x: -14, y: 14)
+            VStack(spacing: 0) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(agentIsReady ? Color.green : Color.orange)
+                        .frame(width: 6, height: 6)
+                    Text("Ben龙")
+                        .font(.caption2.weight(.semibold))
+                    Spacer()
+                    if screenContext.isEnabled {
+                        Label("屏幕", systemImage: "eye.fill")
+                            .labelStyle(.iconOnly)
+                            .foregroundStyle(.green)
+                            .help("正在共享屏幕上下文")
                     }
                 }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 13)
+                .padding(.top, 8)
 
-                if let detailThreadID, let agentStore = agentContext.store {
-                    TaskProgressDetailCard(
-                        threadID: detailThreadID,
-                        store: agentStore,
-                        onClose: { self.detailThreadID = nil }
-                    )
-                    .frame(width: 430)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
+                Spacer()
+
+                voiceStatus
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 11)
             }
-            .animation(.snappy(duration: 0.25), value: detailThreadID)
-
-            Spacer(minLength: 8)
-
-            if let approval = preferredApproval, let agentStore = agentContext.store {
-                approvalBar(approval, store: agentStore)
-            }
-            composerBar
+            .zIndex(5)
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 14)
     }
 
-    private var liveStatus: some View {
-        HStack(spacing: 6) {
-            Circle().fill(agentIsReady ? Color.green : Color.orange).frame(width: 7, height: 7)
-            Text(mascotModel.presentedState.shortLabel).font(.caption.weight(.semibold))
-            if let store = agentContext.store {
-                let running = store.activeTurns.values.filter { $0.status.isCompanionRunning }.count
-                if running > 0 {
-                    Text("· \(running) 个任务运行中")
-                        .font(.caption2)
-                        .foregroundStyle(.cyan)
-                }
+    private var voiceStatus: some View {
+        HStack(spacing: 7) {
+            Image(systemName: voiceInteraction.isConversationEnabled ? "waveform.circle.fill" : "pause.circle.fill")
+                .foregroundStyle(voiceInteraction.isConversationEnabled ? Color.green : Color.secondary)
+                .symbolEffect(.pulse, isActive: voiceInteraction.isRecording)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(voiceTitle)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text(voiceSubtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            if voiceInteraction.isConversationEnabled {
-                HStack(spacing: 3) {
-                    Circle().fill(Color.green).frame(width: 6, height: 6)
-                    Image(systemName: "phone.fill").font(.caption2).foregroundStyle(.green)
-                }
-                .help("持续语音通话已开启")
-                .accessibilityLabel("持续语音通话已开启")
-            }
-            if screenContext.isEnabled {
-                HStack(spacing: 3) {
-                    Circle().fill(Color.green).frame(width: 6, height: 6)
-                    Image(systemName: "eye.fill").font(.caption2).foregroundStyle(.green)
-                }
-                .help("共享屏幕上下文已开启；会定时截图给 Codex")
-                .accessibilityLabel("共享屏幕上下文已开启")
-            }
+            Spacer(minLength: 0)
         }
-        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.075), in: .rect(cornerRadius: 13))
+        .overlay { RoundedRectangle(cornerRadius: 13).stroke(.white.opacity(0.09), lineWidth: 1) }
     }
 
-    private var composerBar: some View {
-        HStack(spacing: 8) {
-            Button(action: toggleVoice) {
-                Image(systemName: voiceInteraction.isConversationEnabled ? "phone.down.fill" : "phone.fill")
-            }
-            .buttonStyle(.glassProminent)
-            .tint(voiceInteraction.isConversationEnabled ? .red : .green)
-            .help(voiceInteraction.isConversationEnabled ? "关闭持续语音" : "开启持续语音")
-
-            TextField(composerPlaceholder, text: $composer, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...3)
-                .focused($isComposerFocused)
-                .onSubmit(send)
-
-            Button(action: beginOrSendNewTask) {
-                Label(
-                    interactionState.isComposingNewTask ? "新任务中" : "新任务",
-                    systemImage: interactionState.isComposingNewTask ? "plus.bubble.fill" : "plus.bubble"
-                )
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.glass)
-            .foregroundStyle(interactionState.isComposingNewTask ? Color.cyan : Color.primary)
-            .help(
-                interactionState.isComposingNewTask
-                    ? "正在输入一个独立任务；回车或点发送开始执行，再点一次取消"
-                    : "另开一个并行任务；也可以先点这里再输入"
-            )
-            .accessibilityLabel(interactionState.isComposingNewTask ? "正在新建任务" : "新建任务")
-            .accessibilityHint("点击后输入任务，回车或点发送开始执行")
-
-            Button {
-                screenContext.isEnabled.toggle()
-            } label: {
-                Image(systemName: screenContext.isEnabled ? "eye.fill" : "eye.slash")
-            }
-            .buttonStyle(.glass)
-            .foregroundStyle(screenContext.isEnabled ? Color.green : Color.secondary)
-            .help(
-                screenContext.isEnabled
-                    ? "停止定时截图给 Codex"
-                    : "允许定时截图给 Codex（共享屏幕上下文）"
-            )
-            .accessibilityLabel(
-                screenContext.isEnabled
-                    ? "停止共享屏幕上下文"
-                    : "允许定时截图给 Codex"
-            )
-
-            Button(action: send) { Image(systemName: "paperplane.fill") }
-                .buttonStyle(.glassProminent)
-                .disabled(composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .background(.white.opacity(0.075), in: .capsule)
-        .overlay { Capsule().stroke(.white.opacity(0.1), lineWidth: 1) }
+    private var voiceTitle: String {
+        if voiceInteraction.isSpeaking { return "Ben龙正在回应" }
+        if voiceInteraction.isRecording { return "正在聆听" }
+        if voiceInteraction.isConversationEnabled { return "语音即将恢复" }
+        return "语音已暂停"
     }
 
-    private func approvalBar(_ approval: AgentApprovalRequest, store: AgentStore) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
-            Text(approval.reason ?? approval.command ?? "Codex 有一个动作需要确认")
-                .font(.caption).lineLimit(2)
-            Spacer()
-            Button("拒绝", role: .destructive) {
-                Task { await store.resolveApproval(id: approval.id, response: .decline) }
-            }
-            .buttonStyle(.glass)
-            Button("允许一次") {
-                Task { await store.resolveApproval(id: approval.id, response: .accept) }
-            }
-            .buttonStyle(.glassProminent)
-        }
-        .padding(9)
-        .background(.orange.opacity(0.1), in: .rect(cornerRadius: 13))
+    private var voiceSubtitle: String {
+        let transcript = voiceInteraction.liveTranscript
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !transcript.isEmpty { return transcript }
+        return voiceInteraction.isConversationEnabled ? "再点 Ben龙暂停录入" : "点 Ben龙开始交互"
     }
 
-    private var preferredApproval: AgentApprovalRequest? {
-        guard let agentStore = agentContext.store else { return nil }
-        if let threadID = agentStore.selectedThreadID {
-            return agentStore.pendingApprovals.values.first(where: { $0.threadID == threadID })
-                ?? agentStore.pendingApprovals.values.first
-        }
-        return agentStore.pendingApprovals.values.first
+    private var dragonSize: CGFloat {
+        min(88, max(80, layout.compactSize.height * 1.36))
+    }
+
+    private var dragonTopOffset: CGFloat {
+        16
     }
 
     private var agentIsReady: Bool {
-        guard let agentStore = agentContext.store else { return false }
-        if case .ready = agentStore.connectionState { return true }
+        guard let store = agentContext.store else { return false }
+        if case .ready = store.connectionState { return true }
         return false
     }
 
-    private func send() {
-        let text = composer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        composer = ""
-        if interactionState.isComposingNewTask {
-            interactionState.isComposingNewTask = false
-            onStartNewTask(text)
-        } else {
-            onSendPrompt(text)
+    private func toggleVoiceConversation() {
+        if voiceInteraction.pendingTranscript != nil {
+            voiceInteraction.cancelPending()
         }
-    }
-
-    private func beginOrSendNewTask() {
-        let text = composer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            interactionState.isComposingNewTask.toggle()
-            if interactionState.isComposingNewTask {
-                interactionState.requestComposerFocus()
-            }
-            return
-        }
-        composer = ""
-        interactionState.isComposingNewTask = false
-        onStartNewTask(text)
-    }
-
-    private var mascotTapGesture: some Gesture {
-        TapGesture().onEnded(handleMascotClick)
-    }
-
-    private func handleMascotClick() {
-        guard (!voiceInteraction.isRecording || voiceInteraction.isConversationEnabled),
-              voiceInteraction.pendingTranscript == nil else { return }
-        onMascotAction()
-    }
-
-    private func focusComposerAfterExpansion() {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard presentationState.isExpanded else { return }
-            isComposerFocused = true
-        }
-    }
-
-    private var composerPlaceholder: String {
-        interactionState.isComposingNewTask
-            ? "Hi，要我做个新任务吗？"
-            : "Hi，要我做点什么。"
-    }
-
-    private func toggleVoice() {
         voiceInteraction.toggleConversation()
     }
 
@@ -396,17 +190,9 @@ struct NotchCompanionView: View {
         Array(store.threads.filter { thread in
             store.activeTurns[thread.id]?.status.isCompanionRunning == true
         }.sorted { left, right in
-            return (left.updatedAt ?? left.createdAt ?? 0) > (right.updatedAt ?? right.createdAt ?? 0)
+            (left.updatedAt ?? left.createdAt ?? 0) > (right.updatedAt ?? right.createdAt ?? 0)
         }.prefix(8))
     }
-
-    private var runningTaskIDs: [String] {
-        guard let store = agentContext.store else { return [] }
-        return store.activeTurns.compactMap { threadID, turn in
-            turn.status.isCompanionRunning ? threadID : nil
-        }.sorted()
-    }
-
 }
 
 private struct DragonActionGlyph: View {
@@ -415,17 +201,17 @@ private struct DragonActionGlyph: View {
     var body: some View {
         Group {
             switch state {
-            case .listening: Image(systemName: "phone.fill").foregroundStyle(.green)
+            case .listening: Image(systemName: "waveform").foregroundStyle(.green)
             case .thinking, .working: Image(systemName: "ellipsis.message.fill").foregroundStyle(.cyan)
             case .waitingApproval: Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
-            case .success: Image(systemName: "paperplane.fill").foregroundStyle(.green)
+            case .success: Image(systemName: "checkmark.message.fill").foregroundStyle(.green)
             case .error: Image(systemName: "exclamationmark.bubble.fill").foregroundStyle(.red)
             default: EmptyView()
             }
         }
-        .font(.system(size: 30, weight: .bold))
+        .font(.system(size: 28, weight: .bold))
         .symbolEffect(.bounce, value: state)
-        .padding(9)
+        .padding(8)
         .background(.ultraThinMaterial, in: .circle)
     }
 }

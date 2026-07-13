@@ -82,6 +82,33 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
         setConversationEnabled(!isConversationEnabled)
     }
 
+    var microphonePermissionLabel: String {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: return "已允许"
+        case .notDetermined: return "尚未请求"
+        case .denied: return "已拒绝"
+        case .restricted: return "受系统限制"
+        @unknown default: return "未知"
+        }
+    }
+
+    var speechPermissionLabel: String {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized: return "已允许"
+        case .notDetermined: return "尚未请求"
+        case .denied: return "已拒绝"
+        case .restricted: return "受系统限制"
+        @unknown default: return "未知"
+        }
+    }
+
+    @discardableResult
+    func requestPermissions() async -> Bool {
+        let granted = await ensurePermissions()
+        objectWillChange.send()
+        return granted
+    }
+
     private func startContinuousListeningIfNeeded() async {
         guard isConversationEnabled,
               !isRecording,
@@ -93,7 +120,10 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
     private func startRecognition(mode: RecordingMode) async {
         guard !isRecording else { return }
 
-        guard await ensurePermissions() else { return }
+        guard await ensurePermissions() else {
+            if mode == .continuous { setConversationEnabled(false) }
+            return
+        }
         guard let speechRecognizer, speechRecognizer.isAvailable else {
             fail("当前语言的系统语音识别暂不可用")
             if mode == .continuous { scheduleContinuousRestart() }

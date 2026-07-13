@@ -17,10 +17,9 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(layout.notchSize, measuredNotch)
         XCTAssertEqual(layout.compactSize.width, 254, accuracy: 0.001)
         XCTAssertEqual(layout.compactSize.height, 62, accuracy: 0.001)
-        XCTAssertEqual(layout.expandedSize.width, 560, accuracy: 0.001)
-        XCTAssertEqual(layout.expandedSize.height, 470, accuracy: 0.001)
-        XCTAssertEqual(layout.expandedDetailSize.width, 820, accuracy: 0.001)
-        XCTAssertEqual(layout.expandedDetailSize.height, 470, accuracy: 0.001)
+        XCTAssertEqual(layout.expandedSize.width, 300, accuracy: 0.001)
+        XCTAssertEqual(layout.expandedSize.height, 300, accuracy: 0.001)
+        XCTAssertEqual(layout.expandedDetailSize, layout.expandedSize)
         XCTAssertLessThanOrEqual(layout.expandedSize.width, visibleFrame.width)
         XCTAssertLessThanOrEqual(layout.expandedSize.height, visibleFrame.height)
         XCTAssertEqual(layout.compactTopOffset, 0)
@@ -42,8 +41,8 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertLessThanOrEqual(layout.compactSize.width, 270)
         XCTAssertGreaterThanOrEqual(layout.compactSize.height, 58)
         XCTAssertLessThanOrEqual(layout.compactSize.height, 68)
-        XCTAssertEqual(layout.expandedSize, NSSize(width: 560, height: 470))
-        XCTAssertEqual(layout.expandedDetailSize, NSSize(width: 820, height: 470))
+        XCTAssertEqual(layout.expandedSize, NSSize(width: 300, height: 300))
+        XCTAssertEqual(layout.expandedDetailSize, layout.expandedSize)
     }
 
     func testNarrowVisibleFrameShrinksBothStatesInsideAvailableArea() {
@@ -57,9 +56,10 @@ final class NotchGeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(layout.compactSize.width, 254, accuracy: 0.001)
-        XCTAssertEqual(layout.expandedSize.width, 288, accuracy: 0.001)
-        XCTAssertEqual(layout.expandedDetailSize.width, 288, accuracy: 0.001)
+        XCTAssertEqual(layout.expandedSize.width, 240, accuracy: 0.001)
+        XCTAssertEqual(layout.expandedDetailSize.width, 240, accuracy: 0.001)
         XCTAssertEqual(layout.expandedSize.height, 240, accuracy: 0.001)
+        XCTAssertEqual(layout.expandedSize.width, layout.expandedSize.height)
         XCTAssertLessThan(layout.compactSize.width, 270)
         XCTAssertLessThanOrEqual(layout.compactSize.width, visibleFrame.width)
         XCTAssertLessThanOrEqual(layout.compactSize.height, visibleFrame.height)

@@ -32,5 +32,28 @@ final class AgentArtifactHandoffTests: XCTestCase {
         XCTAssertTrue(prompt.contains(WorkspacePaths.markdownRoot.path))
         XCTAssertTrue(prompt.contains("BENBENBEN_ARTIFACT:"))
         XCTAssertTrue(prompt.contains("recently modified Markdown"))
+        XCTAssertTrue(prompt.contains("BENBENBEN_TASK_WINDOW:"))
+    }
+
+    func testOperatingContractIncludesEveryOpenTabFromVisibleSharedWindows() {
+        let first = URL(fileURLWithPath: "/tmp/one.md")
+        let second = URL(fileURLWithPath: "/tmp/two.md")
+        let prompt = AgentOperatingContract.prompt(
+            "继续",
+            sharedWindows: [
+                AgentSharedWindowContext(
+                    kind: .markdown,
+                    files: [first, second],
+                    selectedFile: second,
+                    isFocused: true
+                )
+            ],
+            selectedTaskID: "thread-1"
+        )
+
+        XCTAssertTrue(prompt.contains(first.path))
+        XCTAssertTrue(prompt.contains(second.path + " [selected tab]"))
+        XCTAssertTrue(prompt.contains("MD window [focused]"))
+        XCTAssertTrue(prompt.contains("thread-1"))
     }
 }

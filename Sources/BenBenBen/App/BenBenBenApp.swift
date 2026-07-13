@@ -29,18 +29,17 @@ struct BenBenBenApp: App {
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
 
-                Button("New Agent Thread") {
-                    model.createAgentThread()
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-
                 Divider()
 
-                Button("Open five shared windows") {
-                    model.showArtifactWindows()
+                Button("Open six shared windows") {
+                    model.showWorkspaceWindows()
                 }
 
                 Menu("Shared Windows") {
+                    Button("TASKS") {
+                        model.showTaskWindow()
+                    }
+                    Divider()
                     ForEach(AgentArtifactKind.allCases) { kind in
                         Button(kind.title) {
                             model.showArtifactWindow(kind)

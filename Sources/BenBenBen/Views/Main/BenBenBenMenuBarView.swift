@@ -11,7 +11,8 @@ struct BenBenBenMenuBarView: View {
 
         Divider()
 
-        Button("Open five shared windows") { model.showArtifactWindows() }
+        Button("Open six shared windows") { model.showWorkspaceWindows() }
+        Button("TASKS") { model.showTaskWindow() }
         ForEach(AgentArtifactKind.allCases) { kind in
             Button(kind.title) { model.showArtifactWindow(kind) }
         }

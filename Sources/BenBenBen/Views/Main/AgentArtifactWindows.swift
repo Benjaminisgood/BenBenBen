@@ -63,10 +63,18 @@ enum AgentArtifactKind: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+struct AgentSharedWindowContext: Equatable, Sendable {
+    let kind: AgentArtifactKind
+    let files: [URL]
+    let selectedFile: URL?
+    let isFocused: Bool
+}
+
 @MainActor
 final class AgentArtifactStore: ObservableObject {
     let kind: AgentArtifactKind
     @Published private(set) var files: [URL] = []
+    @Published private(set) var openURLs: [URL] = []
     @Published var selectedURL: URL?
     @Published var text = ""
     @Published private(set) var contentRevision = 0
@@ -91,15 +99,19 @@ final class AgentArtifactStore: ObservableObject {
             Self.discover(kind: artifactKind)
         }.value
         files = discovered
+        openURLs.removeAll { !FileManager.default.fileExists(atPath: $0.path) }
         isRefreshing = false
         guard let selectedURL else {
-            self.selectedURL = files.first
-            loadSelected()
+            if let first = files.first { select(first) }
             return
         }
         guard FileManager.default.fileExists(atPath: selectedURL.path) else {
-            self.selectedURL = files.first
-            loadSelected()
+            if let first = files.first {
+                select(first)
+            } else {
+                self.selectedURL = nil
+                loadSelected()
+            }
             return
         }
         let date = modificationDate(for: selectedURL)
@@ -109,8 +121,45 @@ final class AgentArtifactStore: ObservableObject {
 
     func select(_ url: URL) {
         saveNow()
+        if !openURLs.contains(url) {
+            openURLs.append(url)
+        }
         selectedURL = url
         loadSelected()
+    }
+
+    func closeTab(_ url: URL) {
+        guard let index = openURLs.firstIndex(of: url) else { return }
+        if selectedURL == url { saveNow() }
+        openURLs.remove(at: index)
+        guard selectedURL == url else { return }
+        if openURLs.isEmpty {
+            selectedURL = nil
+            loadSelected()
+        } else {
+            select(openURLs[min(index, openURLs.count - 1)])
+        }
+    }
+
+    func reloadWorkspace() async {
+        saveNow()
+        openURLs = []
+        selectedURL = nil
+        loadSelected()
+        await refresh()
+    }
+
+    func bestMatchingFile(for spokenText: String) -> URL? {
+        let query = Self.searchKey(spokenText)
+        return files.filter { url in
+            let fullName = Self.searchKey(url.lastPathComponent)
+            let baseName = Self.searchKey(url.deletingPathExtension().lastPathComponent)
+            return (!baseName.isEmpty && query.contains(baseName))
+                || (!fullName.isEmpty && query.contains(fullName))
+        }.max { left, right in
+            left.deletingPathExtension().lastPathComponent.count
+                < right.deletingPathExtension().lastPathComponent.count
+        }
     }
 
     func userEdited(_ newText: String) {
@@ -191,6 +240,10 @@ final class AgentArtifactStore: ObservableObject {
     private nonisolated static func modificationDate(for url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
+
+    private nonisolated static func searchKey(_ value: String) -> String {
+        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
 }
 
 @MainActor
@@ -199,16 +252,13 @@ final class AgentArtifactWindowController {
     private var stores: [AgentArtifactKind: AgentArtifactStore] = [:]
     private let agentContext: NotchAgentContext
     private let screenContext: ScreenContextMonitor
-    private let onPrompt: (String, URL?) async -> AgentPromptSubmissionResult
 
     init(
         agentContext: NotchAgentContext,
-        screenContext: ScreenContextMonitor,
-        onPrompt: @escaping (String, URL?) async -> AgentPromptSubmissionResult
+        screenContext: ScreenContextMonitor
     ) {
         self.agentContext = agentContext
         self.screenContext = screenContext
-        self.onPrompt = onPrompt
     }
 
     func showAll() {
@@ -240,18 +290,50 @@ final class AgentArtifactWindowController {
         window(for: kind).makeKeyAndOrderFront(nil)
     }
 
-    func reveal(_ artifacts: [AgentArtifact]) async {
-        var newestByKind: [AgentArtifactKind: AgentArtifact] = [:]
-        for artifact in artifacts where newestByKind[artifact.kind] == nil {
-            newestByKind[artifact.kind] = artifact
-        }
+    @discardableResult
+    func show(_ kind: AgentArtifactKind, matching spokenText: String) async -> URL? {
+        _ = window(for: kind)
+        guard let store = stores[kind] else { return nil }
+        await store.refresh()
+        let match = store.bestMatchingFile(for: spokenText)
+        if let match { store.select(match) }
+        show(kind)
+        return match
+    }
 
-        for artifact in newestByKind.values.sorted(by: { $0.modifiedAt < $1.modifiedAt }) {
-            _ = window(for: artifact.kind)
-            guard let store = stores[artifact.kind] else { continue }
+    func liveContext() -> [AgentSharedWindowContext] {
+        AgentArtifactKind.allCases.compactMap { kind in
+            guard let window = windows[kind],
+                  window.isVisible,
+                  !window.isMiniaturized,
+                  let store = stores[kind],
+                  !store.openURLs.isEmpty else { return nil }
+            return AgentSharedWindowContext(
+                kind: kind,
+                files: store.openURLs,
+                selectedFile: store.selectedURL,
+                isFocused: window.isKeyWindow
+            )
+        }
+    }
+
+    func reloadWorkspace() async {
+        for store in stores.values {
+            await store.reloadWorkspace()
+        }
+    }
+
+    func reveal(_ artifacts: [AgentArtifact]) async {
+        let grouped = Dictionary(grouping: artifacts, by: \.kind)
+        for kind in AgentArtifactKind.allCases {
+            guard let kindArtifacts = grouped[kind], !kindArtifacts.isEmpty else { continue }
+            _ = window(for: kind)
+            guard let store = stores[kind] else { continue }
             await store.refresh()
-            store.select(artifact.url)
-            show(artifact.kind)
+            for artifact in kindArtifacts.sorted(by: { $0.modifiedAt < $1.modifiedAt }) {
+                store.select(artifact.url)
+            }
+            show(kind)
         }
     }
 
@@ -262,8 +344,7 @@ final class AgentArtifactWindowController {
         let root = AgentArtifactWindowView(
             store: store,
             agentContext: agentContext,
-            screenContext: screenContext,
-            onPrompt: onPrompt
+            screenContext: screenContext
         )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 740, height: 580),
@@ -285,12 +366,6 @@ private struct AgentArtifactWindowView: View {
     @ObservedObject var store: AgentArtifactStore
     @ObservedObject var agentContext: NotchAgentContext
     @ObservedObject var screenContext: ScreenContextMonitor
-    let onPrompt: (String, URL?) async -> AgentPromptSubmissionResult
-
-    @State private var draft = ""
-    @State private var isSubmitting = false
-    @State private var submissionMessage: String?
-    @State private var submissionFailed = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -302,8 +377,6 @@ private struct AgentArtifactWindowView: View {
                 editor
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
             }
-            Divider()
-            composer
         }
         .background(.regularMaterial)
         .task {
@@ -347,7 +420,7 @@ private struct AgentArtifactWindowView: View {
                 ContentUnavailableView(
                     "等待 Agent 创建 \(store.kind.title)",
                     systemImage: store.kind.systemImage,
-                    description: Text("在下方告诉 Ben龙 你要的产物")
+                    description: Text("对 Ben龙说出目标，产物会自动出现在这里")
                 )
             } else {
                 ForEach(store.files, id: \.self) { url in
@@ -368,6 +441,8 @@ private struct AgentArtifactWindowView: View {
     private var editor: some View {
         VStack(spacing: 0) {
             if let url = store.selectedURL {
+                tabBar
+                Divider()
                 HStack {
                     Text(url.path)
                         .font(.caption2.monospaced())
@@ -407,64 +482,45 @@ private struct AgentArtifactWindowView: View {
         }
     }
 
-    private var composer: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                if isSubmitting {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: "sparkles")
-                }
-                TextField("告诉 Ben龙 要在这个共同窗口完成什么…", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...3)
-                    .disabled(isSubmitting)
-                    .onSubmit(send)
-                Button(isSubmitting ? "提交中" : "交给 Codex", systemImage: "arrow.up") { send() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        isSubmitting
-                            || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var tabBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(store.openURLs, id: \.self) { url in
+                    HStack(spacing: 6) {
+                        Image(systemName: url == store.selectedURL ? "doc.fill" : "doc")
+                            .font(.caption2)
+                        Text(url.lastPathComponent)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Button {
+                            store.closeTab(url)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .buttonStyle(.plain)
+                        .help("关闭标签页")
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(
+                        url == store.selectedURL ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08),
+                        in: .rect(cornerRadius: 8)
                     )
+                    .contentShape(Rectangle())
+                    .onTapGesture { store.select(url) }
+                }
             }
-            if let submissionMessage {
-                Text(submissionMessage)
-                    .font(.caption2)
-                    .foregroundStyle(submissionFailed ? Color.red : Color.green)
-                    .lineLimit(2)
-            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
         }
-        .padding(10)
+        .frame(height: 40)
     }
 
     private var agentReady: Bool {
         guard let contextStore = agentContext.store else { return false }
         if case .ready = contextStore.connectionState { return true }
         return false
-    }
-
-    private func send() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSubmitting else { return }
-        store.saveNow()
-        isSubmitting = true
-        submissionFailed = false
-        submissionMessage = "正在创建独立任务…"
-        let focusedFile = store.selectedURL
-
-        Task { @MainActor in
-            let result = await onPrompt("在 \(store.kind.title) 共同窗口中：\(text)", focusedFile)
-            isSubmitting = false
-            switch result {
-            case .accepted:
-                draft = ""
-                submissionFailed = false
-                submissionMessage = "已交给 Codex，正在作为独立任务运行"
-            case .rejected(let message):
-                submissionFailed = true
-                submissionMessage = message
-            }
-        }
     }
 
     private func relativePath(_ url: URL) -> String {

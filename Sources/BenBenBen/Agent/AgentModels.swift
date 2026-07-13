@@ -264,6 +264,40 @@ struct AgentApprovalRequest: Sendable, Equatable, Identifiable {
     let command: String?
     let cwd: String?
     let rawParams: AgentJSON
+
+    var userInputQuestions: [AgentUserInputQuestion] {
+        guard kind == .userInput else { return [] }
+        return rawParams["questions"]?.arrayValue?.compactMap(AgentUserInputQuestion.init(json:)) ?? []
+    }
+}
+
+struct AgentUserInputQuestion: Sendable, Equatable, Identifiable {
+    struct Option: Sendable, Equatable, Identifiable {
+        let label: String
+        let description: String
+
+        var id: String { label }
+    }
+
+    let id: String
+    let header: String
+    let question: String
+    let options: [Option]
+
+    init?(json: AgentJSON) {
+        guard let id = json["id"]?.stringValue,
+              let question = json["question"]?.stringValue else { return nil }
+        self.id = id
+        header = json["header"]?.stringValue ?? "需要你的选择"
+        self.question = question
+        options = json["options"]?.arrayValue?.compactMap { value in
+            guard let label = value["label"]?.stringValue else { return nil }
+            return Option(
+                label: label,
+                description: value["description"]?.stringValue ?? ""
+            )
+        } ?? []
+    }
 }
 
 enum AgentApprovalResponse: Sendable, Equatable {

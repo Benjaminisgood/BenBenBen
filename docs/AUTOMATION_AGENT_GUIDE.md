@@ -37,7 +37,7 @@ Shell 的 `workspaces/`、`workspace-inputs/`、transcript 和日志属于运行
 2. `pys/*.py` 负责结构化数据、状态持久化、内容生成和复杂业务逻辑。
 3. `applescripts/*.applescript` 只负责通知、窗口控制、快速笔记等 macOS UI 交互。
 
-五个共同窗口按以下协作链工作：MD 是只读知识源；PLIST 只调度固定 Shell 入口；SCRIPTS 负责薄入口和 macOS UI 适配；PY 处理业务逻辑与 JSON 状态；所有人读产物统一落入 HTML 模块。机器状态继续写入 `shs/workspaces/`。
+五个文件共同窗口按以下协作链工作：MD 是只读知识源；PLIST 只调度固定 Shell 入口；SCRIPTS 负责薄入口和 macOS UI 适配；PY 处理业务逻辑与 JSON 状态；所有人读产物统一落入 HTML 模块。每个文件窗口可打开多个标签，所有可见标签都会成为语音任务上下文。第六个任务窗口只负责历史任务、当前细则和选择判断，不属于文件协作链。机器状态继续写入 `shs/workspaces/`。
 
 避免在 Shell 中内嵌大段 Python，也不要把业务 Python 放进 Shell 目录下的隐藏缓存目录。
 

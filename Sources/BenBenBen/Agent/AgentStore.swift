@@ -39,9 +39,14 @@ final class AgentStore: ObservableObject {
     private let runtime: any AgentRuntime
     private var eventTask: Task<Void, Never>?
     private var loadedThreadIDs = Set<String>()
+    private static let taskPromptsDefaultsKey = "benbenben.agent.taskPrompts"
+    private static var persistedTaskPrompts: [String: String] {
+        UserDefaults.standard.dictionary(forKey: taskPromptsDefaultsKey) as? [String: String] ?? [:]
+    }
 
     init(runtime: any AgentRuntime) {
         self.runtime = runtime
+        taskPrompts = Self.persistedTaskPrompts
         consumeEvents()
     }
 
@@ -273,6 +278,7 @@ final class AgentStore: ObservableObject {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         taskPrompts[threadID] = trimmed
+        persistTaskPrompts()
     }
 
     func setExecutionMode(_ mode: AgentTaskExecutionMode, for threadID: String) {
@@ -471,12 +477,17 @@ final class AgentStore: ObservableObject {
         taskPlans[id] = nil
         taskActivities[id] = nil
         taskPrompts[id] = nil
+        persistTaskPrompts()
         latestGuidance[id] = nil
         executionModes[id] = nil
         commandOutputsByThread[id] = nil
         if selectedThreadID == id {
             selectedThreadID = threads.first?.id
         }
+    }
+
+    private func persistTaskPrompts() {
+        UserDefaults.standard.set(taskPrompts, forKey: Self.taskPromptsDefaultsKey)
     }
 
     private func ensureThreadIsLoaded(

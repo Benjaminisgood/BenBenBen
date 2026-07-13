@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if ProcessInfo.processInfo.environment["BENBENBEN_UI_TEST_ARTIFACTS"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                AppModel.shared.showArtifactWindows()
+                AppModel.shared.showWorkspaceWindows()
             }
         }
     }

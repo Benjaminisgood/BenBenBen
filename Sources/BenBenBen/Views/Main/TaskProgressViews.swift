@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct DragonTaskThoughtCloud: View {
@@ -80,7 +81,7 @@ struct DragonTaskThoughtCloud: View {
     }
 
     private func taskTitle(_ thread: AgentThread) -> String {
-        let source = store.taskPrompts[thread.id] ?? thread.name ?? thread.preview
+        let source = companionTaskTitle(thread, store: store)
         let normalized = source.replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.isEmpty { return "任务 \(thread.id.prefix(6))" }
@@ -164,6 +165,8 @@ struct TaskProgressDetailCard: View {
     let threadID: String
     @ObservedObject var store: AgentStore
     let onClose: () -> Void
+    var showsCloseButton = true
+    var usesWindowLayout = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -174,12 +177,18 @@ struct TaskProgressDetailCard: View {
                     Text(status.companionStatusLabel).font(.caption2).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(action: onClose) { Image(systemName: "xmark") }
-                    .buttonStyle(.plain)
+                if showsCloseButton {
+                    Button(action: onClose) { Image(systemName: "xmark") }
+                        .buttonStyle(.plain)
+                }
             }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let pendingRequest {
+                        TaskPendingRequestView(request: pendingRequest, store: store)
+                    }
+
                     if !plan.isEmpty {
                         Text("计划").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         ForEach(plan) { step in
@@ -228,7 +237,7 @@ struct TaskProgressDetailCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 210)
+            .frame(maxHeight: usesWindowLayout ? .infinity : 210)
 
             HStack(spacing: 6) {
                 Picker("权限", selection: executionModeBinding) {
@@ -253,7 +262,7 @@ struct TaskProgressDetailCard: View {
                 Spacer(minLength: 4)
 
                 if let turn = store.activeTurns[threadID], turn.status.isCompanionRunning {
-                    Text("下方输入会直接引导这个任务")
+                    Text("继续对 Ben龙说话会引导此任务")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
@@ -276,11 +285,14 @@ struct TaskProgressDetailCard: View {
 
     private var thread: AgentThread? { store.threads.first { $0.id == threadID } }
     private var title: String {
-        store.taskPrompts[threadID] ?? thread?.name ?? thread?.preview ?? "任务 \(threadID.prefix(6))"
+        guard let thread else { return "任务 \(threadID.prefix(6))" }
+        return companionTaskTitle(thread, store: store)
     }
     private var status: String { store.activeTurns[threadID]?.status ?? thread?.status ?? "idle" }
     private var plan: [AgentPlanStep] { store.taskPlans[threadID] ?? [] }
-    private var activities: [AgentTaskActivity] { Array((store.taskActivities[threadID] ?? []).suffix(6)) }
+    private var activities: [AgentTaskActivity] {
+        Array((store.taskActivities[threadID] ?? []).suffix(usesWindowLayout ? 40 : 6))
+    }
     private var liveReply: String {
         store.agentMessages[threadID]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
@@ -292,6 +304,265 @@ struct TaskProgressDetailCard: View {
             get: { store.executionMode(for: threadID) },
             set: { store.setExecutionMode($0, for: threadID) }
         )
+    }
+    private var pendingRequest: AgentApprovalRequest? {
+        store.pendingApprovals.values.first { $0.threadID == threadID }
+    }
+}
+
+@MainActor
+final class AgentTaskWindowController {
+    private let agentContext: NotchAgentContext
+    private var window: NSWindow?
+
+    init(agentContext: NotchAgentContext) {
+        self.agentContext = agentContext
+    }
+
+    var visibleThreadID: String? {
+        guard window?.isVisible == true else { return nil }
+        return agentContext.store?.selectedThreadID
+    }
+
+    func show(threadID: String? = nil) {
+        if let threadID {
+            agentContext.store?.selectedThreadID = threadID
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        taskWindow().makeKeyAndOrderFront(nil)
+    }
+
+    private func taskWindow() -> NSWindow {
+        if let window { return window }
+        let root = AgentTaskWindowView(agentContext: agentContext)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 610),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Ben龙 · 任务"
+        window.titlebarAppearsTransparent = true
+        window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.fullScreenAuxiliary]
+        window.contentMinSize = NSSize(width: 680, height: 440)
+        window.center()
+        window.contentView = NSHostingView(rootView: root)
+        self.window = window
+        return window
+    }
+}
+
+private struct AgentTaskWindowView: View {
+    @ObservedObject var agentContext: NotchAgentContext
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 9) {
+                Label("任务", systemImage: "bubble.left.and.text.bubble.right.fill")
+                    .font(.headline)
+                Text("左侧切换历史任务；语音只会继续当前选中的一个任务")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 30)
+            .padding(.bottom, 10)
+
+            Divider()
+
+            if let store = agentContext.store {
+                HSplitView {
+                    List(selection: Binding(
+                        get: { store.selectedThreadID },
+                        set: { store.selectedThreadID = $0 }
+                    )) {
+                        ForEach(sortedThreads(store)) { thread in
+                            TaskHistoryRow(thread: thread, store: store)
+                                .tag(thread.id)
+                        }
+                    }
+                    .listStyle(.sidebar)
+                    .frame(minWidth: 210, idealWidth: 250, maxWidth: 310)
+
+                    Group {
+                        if let threadID = store.selectedThreadID {
+                            TaskProgressDetailCard(
+                                threadID: threadID,
+                                store: store,
+                                onClose: {},
+                                showsCloseButton: false,
+                                usesWindowLayout: true
+                            )
+                            .padding(14)
+                        } else {
+                            ContentUnavailableView(
+                                "还没有任务",
+                                systemImage: "waveform.badge.plus",
+                                description: Text("点一下 Ben龙，然后直接说出第一个任务。")
+                            )
+                        }
+                    }
+                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else {
+                ProgressView("正在连接 Codex…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(.regularMaterial)
+    }
+
+    private func sortedThreads(_ store: AgentStore) -> [AgentThread] {
+        store.threads.sorted {
+            ($0.updatedAt ?? $0.createdAt ?? 0) > ($1.updatedAt ?? $1.createdAt ?? 0)
+        }
+    }
+}
+
+private struct TaskHistoryRow: View {
+    let thread: AgentThread
+    @ObservedObject var store: AgentStore
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(status.companionStatusColor)
+                .frame(width: 7, height: 7)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(2)
+                Text(status.companionStatusLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var title: String {
+        companionTaskTitle(thread, store: store)
+    }
+
+    private var status: String {
+        store.activeTurns[thread.id]?.status ?? thread.status ?? "idle"
+    }
+}
+
+@MainActor
+private func companionTaskTitle(_ thread: AgentThread, store: AgentStore) -> String {
+    if let persisted = store.taskPrompts[thread.id], !persisted.isEmpty {
+        return persisted
+    }
+    if let name = thread.name, !name.isEmpty {
+        return name
+    }
+    let preview = thread.preview.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let userRange = preview.range(of: "\n[User]\n") {
+        let userText = preview[userRange.upperBound...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !userText.isEmpty { return userText }
+    }
+    if preview.hasPrefix("[BenBenBen operating contract]") || preview.isEmpty {
+        return "历史任务 \(thread.id.prefix(6))"
+    }
+    return preview
+}
+
+private struct TaskPendingRequestView: View {
+    let request: AgentApprovalRequest
+    @ObservedObject var store: AgentStore
+
+    var body: some View {
+        Group {
+            if request.kind == .userInput, !request.userInputQuestions.isEmpty {
+                TaskUserInputDecisionView(request: request, store: store)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Ben龙需要你判断", systemImage: "hand.raised.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                    Text(request.reason ?? request.command ?? "Codex 请求继续执行")
+                        .font(.caption)
+                        .textSelection(.enabled)
+                    HStack {
+                        Button("拒绝", role: .destructive) {
+                            Task { await store.resolveApproval(id: request.id, response: .decline) }
+                        }
+                        .buttonStyle(.bordered)
+                        if request.kind != .mcpElicitation {
+                            Button("允许一次") {
+                                Task { await store.resolveApproval(id: request.id, response: .accept) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        if request.kind == .command || request.kind == .fileChange || request.kind == .permissions {
+                            Button("本次会话允许") {
+                                Task { await store.resolveApproval(id: request.id, response: .acceptForSession) }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(10)
+        .background(.orange.opacity(0.10), in: .rect(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).stroke(.orange.opacity(0.22), lineWidth: 1) }
+    }
+}
+
+private struct TaskUserInputDecisionView: View {
+    let request: AgentApprovalRequest
+    @ObservedObject var store: AgentStore
+    @State private var selections: [String: String] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("请及时选择", systemImage: "questionmark.bubble.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            ForEach(request.userInputQuestions) { question in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(question.header).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    Text(question.question).font(.caption)
+                    if question.options.isEmpty {
+                        Text("直接对 Ben龙说出答案")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 6) {
+                            ForEach(question.options) { option in
+                                Button(option.label) { selections[question.id] = option.label }
+                                    .buttonStyle(.bordered)
+                                    .tint(selections[question.id] == option.label ? .cyan : .secondary)
+                                    .help(option.description)
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+            if canSubmit {
+                Button("确认选择") {
+                    let answers = selections.mapValues { [$0] }
+                    Task { await store.resolveApproval(id: request.id, response: .userInputAnswers(answers)) }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        }
+        .id(request.id.description)
+    }
+
+    private var canSubmit: Bool {
+        let selectable = request.userInputQuestions.filter { !$0.options.isEmpty }
+        return !selectable.isEmpty && selectable.allSatisfy { selections[$0.id] != nil }
     }
 }
 

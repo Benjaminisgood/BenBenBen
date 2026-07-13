@@ -4,17 +4,8 @@ import SwiftUI
 
 @MainActor
 final class NotchPanel: NSPanel {
-    var onMouseEvent: ((NSEvent) -> Void)?
-
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-
-    override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown || event.type == .leftMouseUp {
-            onMouseEvent?(event)
-        }
-        super.sendEvent(event)
-    }
 }
 
 @MainActor
@@ -32,40 +23,30 @@ final class NotchPanelController: NSObject {
     let agentContext: NotchAgentContext
 
     private let presentationState = NotchPresentationState()
-    private let companionInteractionState = NotchCompanionInteractionState()
     private let compactPanel: NotchPanel
     private let expandedPanel: NotchPanel
-    private let onSendPrompt: (String) -> Void
-    private let onStartNewTask: (String) -> Void
+    private let onSelectTask: (String) -> Void
 
     private var hostingView: NSHostingView<NotchCompanionView>?
     private var compactHostingView: NSHostingView<NotchCompanionView>?
     private var mousePollingTimer: Timer?
-    private var globalMouseUpMonitor: Any?
     private var cachedLayout: NotchLayout?
     private var isExpanded = false
     private var activeMenuTrackingCount = 0
     private var collapseTask: DispatchWorkItem?
-    private var voiceHoldTask: DispatchWorkItem?
-    private var didStartVoiceHold = false
-    private var suppressNextHotClick = false
-    private var isTaskDetailVisible = false
-    private var detailResizeTask: DispatchWorkItem?
 
     init(
         mascotModel: MascotModel = MascotModel(),
         voiceInteraction: VoiceInteractionController = VoiceInteractionController(),
         screenContext: ScreenContextMonitor = ScreenContextMonitor(),
         agentContext: NotchAgentContext = NotchAgentContext(),
-        onSendPrompt: @escaping (String) -> Void = { _ in },
-        onStartNewTask: @escaping (String) -> Void = { _ in }
+        onSelectTask: @escaping (String) -> Void = { _ in }
     ) {
         self.mascotModel = mascotModel
         self.voiceInteraction = voiceInteraction
         self.screenContext = screenContext
         self.agentContext = agentContext
-        self.onSendPrompt = onSendPrompt
-        self.onStartNewTask = onStartNewTask
+        self.onSelectTask = onSelectTask
         compactPanel = NotchPanel(
             contentRect: .zero,
             styleMask: [.borderless, .fullSizeContentView],
@@ -85,8 +66,6 @@ final class NotchPanelController: NSObject {
         rebuildContent()
         startMousePolling()
         observeScreenChanges()
-        observePanelMouseEvents()
-        observeGlobalMouseUp()
         observeMenuTracking()
     }
 
@@ -94,7 +73,6 @@ final class NotchPanelController: NSObject {
         let layout = currentLayout()
         rebuildContent(layout: layout)
         isExpanded = false
-        mascotModel.setAwake(false)
         presentationState.isExpanded = false
         compactPanel.setFrame(compactFrame(for: layout), display: true)
         expandedPanel.setFrame(expandedFrame(for: layout), display: true)
@@ -189,15 +167,8 @@ final class NotchPanelController: NSObject {
             voiceInteraction: voiceInteraction,
             agentContext: agentContext,
             screenContext: screenContext,
-            interactionState: companionInteractionState,
             layout: layout,
-            onSendPrompt: onSendPrompt,
-            onStartNewTask: onStartNewTask,
-            onMascotAction: { [weak self] in self?.mascotModel.cycleRestingAction() },
-            onTaskDetailVisibilityChanged: { [weak self] visible in
-                self?.setTaskDetailVisible(visible)
-            },
-            onCollapse: { [weak self] in self?.collapse(animated: true) }
+            onSelectTask: onSelectTask
         )
 
         if let hostingView, let compactHostingView {
@@ -225,7 +196,6 @@ final class NotchPanelController: NSObject {
     }
 
     private func setPresentationExpanded(_ expanded: Bool, animated: Bool) {
-        mascotModel.setAwake(expanded)
         guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
             presentationState.isExpanded = expanded
             return
@@ -233,27 +203,6 @@ final class NotchPanelController: NSObject {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
             presentationState.isExpanded = expanded
         }
-    }
-
-    private func setTaskDetailVisible(_ visible: Bool) {
-        guard isTaskDetailVisible != visible else { return }
-        isTaskDetailVisible = visible
-        detailResizeTask?.cancel()
-
-        let shouldAnimate = isExpanded && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        expandedPanel.setFrame(expandedFrame(for: currentLayout()), display: true, animate: shouldAnimate)
-
-        guard !visible else { return }
-        let task = DispatchWorkItem { [weak self] in
-            guard let self, !self.isTaskDetailVisible else { return }
-            self.expandedPanel.setFrame(
-                self.expandedFrame(for: self.currentLayout()),
-                display: true,
-                animate: false
-            )
-        }
-        detailResizeTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32, execute: task)
     }
 
     private func startMousePolling() {
@@ -275,69 +224,6 @@ final class NotchPanelController: NSObject {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
-    }
-
-    private func observePanelMouseEvents() {
-        compactPanel.onMouseEvent = { [weak self] event in
-            guard let self else { return }
-            switch event.type {
-            case .leftMouseDown: self.beginHotPanelPress()
-            case .leftMouseUp: self.endHotPanelPress()
-            default: break
-            }
-        }
-    }
-
-    private func observeGlobalMouseUp() {
-        globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, !self.isExpanded else { return }
-                if self.didStartVoiceHold {
-                    self.endHotPanelPress()
-                } else if self.voiceHoldTask != nil {
-                    self.voiceHoldTask?.cancel()
-                    self.voiceHoldTask = nil
-                }
-            }
-        }
-    }
-
-    private func beginHotPanelPress() {
-        voiceHoldTask?.cancel()
-        didStartVoiceHold = false
-
-        if voiceInteraction.isConversationEnabled {
-            suppressNextHotClick = false
-            return
-        }
-        if voiceInteraction.pendingTranscript != nil {
-            suppressNextHotClick = true
-            voiceInteraction.cancelPending()
-            mascotModel.clearTransient()
-            return
-        }
-
-        suppressNextHotClick = false
-        let task = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.didStartVoiceHold = true
-            Task { await self.voiceInteraction.startRecording() }
-        }
-        voiceHoldTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: task)
-    }
-
-    private func endHotPanelPress() {
-        voiceHoldTask?.cancel()
-        voiceHoldTask = nil
-        if suppressNextHotClick {
-            suppressNextHotClick = false
-            return
-        }
-        if didStartVoiceHold {
-            didStartVoiceHold = false
-            voiceInteraction.stopRecording()
-        }
     }
 
     private func observeMenuTracking() {
@@ -382,8 +268,6 @@ final class NotchPanelController: NSObject {
         if isExpanded {
             if ProcessInfo.processInfo.environment["BENBENBEN_UI_TEST_EXPANDED"] == "1"
                 || activeMenuTrackingCount > 0
-                || hasFocusedTextInput
-                || agentContext.store?.pendingApprovals.isEmpty == false
                 || isPointInExpandedStayRegion(point) {
                 cancelCollapse()
             } else {
@@ -403,8 +287,6 @@ final class NotchPanelController: NSObject {
             guard let self else { return }
             self.collapseTask = nil
             guard self.activeMenuTrackingCount == 0,
-                  !self.hasFocusedTextInput,
-                  self.agentContext.store?.pendingApprovals.isEmpty != false,
                   !self.isPointInExpandedStayRegion(NSEvent.mouseLocation) else { return }
             self.collapse(animated: true)
         }
@@ -426,11 +308,6 @@ final class NotchPanelController: NSObject {
         expandedPanel.frame.insetBy(dx: -10, dy: -10).contains(point)
     }
 
-    private var hasFocusedTextInput: Bool {
-        guard expandedPanel.isKeyWindow else { return false }
-        return expandedPanel.firstResponder is NSTextView || expandedPanel.firstResponder is NSTextField
-    }
-
     private func currentLayout() -> NotchLayout {
         NotchGeometry.layout(for: targetScreen())
     }
@@ -446,8 +323,11 @@ final class NotchPanelController: NSObject {
 
     private func expandedFrame(for layout: NotchLayout) -> NSRect {
         let screenFrame = targetScreen()?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let size = isTaskDetailVisible ? layout.expandedDetailSize : layout.expandedSize
-        return frame(for: size, topY: screenFrame.maxY + layout.expandedTopOffset, in: screenFrame)
+        return frame(
+            for: layout.expandedSize,
+            topY: screenFrame.maxY + layout.expandedTopOffset,
+            in: screenFrame
+        )
     }
 
     private func frame(for size: NSSize, topY: CGFloat, in screenFrame: NSRect) -> NSRect {

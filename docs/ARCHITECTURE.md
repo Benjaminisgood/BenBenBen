@@ -8,15 +8,16 @@ BenBenBenApp
 │   ├── AgentStore -> codex app-server
 │   ├── MascotModel / VoiceInteractionController / ScreenContextMonitor
 │   ├── NotchPanelController -> NotchCompanionView
-│   └── AgentArtifactWindowController
+│   ├── AgentArtifactWindowController
+│   └── AgentTaskWindowController
 ├── Settings scene
 └── MenuBarExtra
 ```
 
-当前产品只有两类界面：
+当前产品只有两类界面、六个独立协作窗口：
 
-1. 刘海伙伴：展示龙、任务进度、审批、文本/语音输入和屏幕上下文状态。
-2. 五个共同窗口：HTML、Python、Markdown、Shell/AppleScript、launchd plist。
+1. 刘海伙伴：紧凑态裁切同一个龙；悬停只把黑色背景向下展开为小正方形。点击龙开始/暂停持续语音，不提供文字输入、新任务、发送或屏幕开关按钮。
+2. 五个多标签文件共同窗口：HTML、Python、Markdown、Shell/AppleScript、launchd plist；另有一个左历史、右细则的单实例任务窗口。
 
 不存在第二套主窗口、旧诊断页面或按文件类型复制的编辑工作台。
 
@@ -28,7 +29,9 @@ BenBenBenApp
 
 ## 文件共同窗口
 
-`AgentArtifactKind` 定义每类文件的当前根目录和扩展名。窗口直接扫描文件系统，不维护第二份业务数据库。任务前后快照用于自动显示新建或更新的产物。
+`AgentArtifactKind` 定义每类文件的当前根目录和扩展名。窗口直接扫描文件系统，不维护第二份业务数据库。每个文件窗口维护一组打开标签；语音提交或运行中引导会把所有可见文件窗口的全部标签路径加入 operating contract，并标记聚焦窗口和选中标签。任务前后快照会把同类的多个新建或更新产物同时打开为标签页。
+
+`AgentTaskWindowController` 只维护一个任务窗口。选择历史任务会同步 `AgentStore.selectedThreadID`；未明确说“新任务”时，下一段语音继续这个线程。`request_user_input` 和审批会按活跃程度自动打开任务窗口，选择既可点击，也可直接口头回答。
 
 ## Runtime
 
@@ -44,4 +47,4 @@ Runtime 不接受模型拼接的任意 argv。非只读 action 必须审批。
 
 ## 数据与安全边界
 
-原始文件只存放在 `~/keyoti` 的当前目录中。新 launchd Label 使用 `com.benbenben.*`；其他前缀不属于应用管理面。现有 `com.notchwow.*` Job 受仓库安全约定保护，不自动改名、卸载或删除。
+原始文件只存放在设置页配置的永久内容目录中，默认为 `~/keyoti`。新 launchd Label 使用 `com.benbenben.*`；其他前缀不属于应用管理面。现有 `com.notchwow.*` Job 受仓库安全约定保护，不自动改名、卸载或删除。

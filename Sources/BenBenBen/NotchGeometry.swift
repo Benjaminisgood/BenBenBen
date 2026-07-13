@@ -101,15 +101,17 @@ enum NotchGeometry {
         let compactWidth = min(compactTargetWidth, availableWidth)
         let compactHeight = min(compactTargetHeight, availableHeight)
 
-        let expandedWidth = min(560, availableWidth)
-        let expandedDetailWidth = min(820, availableWidth)
-        let expandedHeight = min(470, availableHeight)
+        // Expanded Ben龙 is intentionally a small, top-attached square. The
+        // physical notch remains the visual anchor; hovering only reveals more
+        // black space below it instead of turning the companion into a card.
+        let expandedSide = min(300, availableWidth, availableHeight)
+        let expandedSize = NSSize(width: expandedSide, height: expandedSide)
 
         return NotchLayout(
             notchSize: notch,
             compactSize: NSSize(width: compactWidth, height: compactHeight),
-            expandedSize: NSSize(width: expandedWidth, height: expandedHeight),
-            expandedDetailSize: NSSize(width: expandedDetailWidth, height: expandedHeight),
+            expandedSize: expandedSize,
+            expandedDetailSize: expandedSize,
             compactTopOffset: 0,
             expandedTopOffset: 0
         )
