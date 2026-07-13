@@ -178,25 +178,6 @@ struct TaskProgressDetailCard: View {
                     .buttonStyle(.plain)
             }
 
-            HStack {
-                Text("权限")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Picker("权限", selection: executionModeBinding) {
-                    ForEach(AgentTaskExecutionMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                Spacer()
-                if let usage = store.tokenUsage[threadID] {
-                    Text("\(usage.total.totalTokens) tokens")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     if !plan.isEmpty {
@@ -249,16 +230,42 @@ struct TaskProgressDetailCard: View {
             }
             .frame(maxHeight: 210)
 
-            if let turn = store.activeTurns[threadID], turn.status.isCompanionRunning {
-                HStack {
+            HStack(spacing: 6) {
+                Picker("权限", selection: executionModeBinding) {
+                    ForEach(AgentTaskExecutionMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .fixedSize()
+                .help("调整这个任务的权限")
+
+                if let usage = store.tokenUsage[threadID] {
+                    Label("\(usage.total.totalTokens)", systemImage: "gauge.with.dots.needle.33percent")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                        .help("已消耗 \(usage.total.totalTokens) tokens")
+                }
+
+                Spacer(minLength: 4)
+
+                if let turn = store.activeTurns[threadID], turn.status.isCompanionRunning {
                     Text("下方输入会直接引导这个任务")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("停止", systemImage: "stop.fill", role: .destructive) {
+
+                    Button(role: .destructive) {
                         Task { await store.interrupt(threadID: threadID, turnID: turn.id) }
+                    } label: {
+                        Image(systemName: "stop.fill")
                     }
                     .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .help("停止这个任务")
+                    .accessibilityLabel("停止这个任务")
                 }
             }
         }

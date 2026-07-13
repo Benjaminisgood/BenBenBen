@@ -192,7 +192,6 @@ struct NotchCompanionView: View {
             }
             .animation(.snappy(duration: 0.25), value: detailThreadID)
 
-            replyBubble.frame(maxWidth: 520)
             Spacer(minLength: 8)
 
             if let approval = preferredApproval, let agentStore = agentContext.store {
@@ -234,18 +233,6 @@ struct NotchCompanionView: View {
             }
         }
         .foregroundStyle(.secondary)
-    }
-
-    private var replyBubble: some View {
-        Text(replyText)
-            .font(.callout)
-            .lineLimit(4)
-            .multilineTextAlignment(.center)
-            .textSelection(.enabled)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .background(.white.opacity(0.075), in: .rect(cornerRadius: 16))
-            .overlay { RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1) }
     }
 
     private var composerBar: some View {
@@ -342,23 +329,6 @@ struct NotchCompanionView: View {
         return false
     }
 
-    private var replyText: String {
-        if voiceInteraction.isRecording, !voiceInteraction.liveTranscript.isEmpty {
-            return voiceInteraction.liveTranscript
-        }
-        guard let agentStore = agentContext.store else { return "我正在连接 Codex…" }
-        if let threadID = agentStore.selectedThreadID {
-            if let acknowledgement = agentStore.latestGuidance[threadID], !acknowledgement.isEmpty {
-                return acknowledgement
-            }
-            let reply = agentStore.agentMessages[threadID]?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !reply.isEmpty { return reply }
-        }
-        if let bubble = mascotModel.bubbleText, !bubble.isEmpty { return bubble }
-        return "告诉我你正在做什么。"
-    }
-
     private func send() {
         let text = composer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -385,8 +355,8 @@ struct NotchCompanionView: View {
 
     private var composerPlaceholder: String {
         isComposingNewTask
-            ? "描述这个新任务，回车后并行执行…"
-            : "输入会引导当前任务；点“新任务”可另开任务…"
+            ? "Hi，要我做个新任务吗？"
+            : "Hi，要我做点什么。"
     }
 
     private func toggleVoice() {
