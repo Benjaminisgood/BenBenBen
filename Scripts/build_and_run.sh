@@ -90,7 +90,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>NSAppleEventsUsageDescription</key>
   <string>BenBenBen can open directories you choose in Terminal.</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>BenBenBen listens while persistent voice conversation is enabled so you can speak to Ben龙 at any time.</string>
+  <string>BenBenBen listens when you hold Ben龙 to speak or enable persistent voice conversation.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
   <string>BenBenBen converts your opt-in voice conversation into text for your Codex agent.</string>
   <key>NSScreenCaptureUsageDescription</key>

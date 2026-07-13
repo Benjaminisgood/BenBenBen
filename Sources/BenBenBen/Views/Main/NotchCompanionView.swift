@@ -17,28 +17,13 @@ struct NotchCompanionView: View {
     @ObservedObject var agentContext: NotchAgentContext
 
     let layout: NotchLayout
+    let onVoiceTap: () -> Void
     let onSelectTask: (String) -> Void
 
     var body: some View {
         ZStack(alignment: .top) {
             background
-
-            MascotView(
-                state: mascotModel.presentedState,
-                motion: mascotModel.presentedMotion,
-                size: dragonSize,
-                revision: mascotModel.presentationRevision
-            )
-            .offset(y: dragonTopOffset)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: toggleVoiceConversation)
-            .help(voiceInteraction.isConversationEnabled ? "暂停语音录入" : "开始语音交互")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Ben龙语音按钮")
-            .accessibilityHint(voiceInteraction.isConversationEnabled ? "单击暂停语音录入" : "单击开始语音交互")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { toggleVoiceConversation() }
-            .zIndex(3)
+            voiceButton
 
             taskOverlay
         }
@@ -56,6 +41,25 @@ struct NotchCompanionView: View {
     private var background: some View {
         TopAttachedRoundedShape(radius: 18)
             .fill(Color.black)
+    }
+
+    private var voiceButton: some View {
+        MascotView(
+            state: mascotModel.presentedState,
+            motion: mascotModel.presentedMotion,
+            size: dragonSize,
+            revision: mascotModel.presentationRevision
+        )
+        .offset(y: dragonTopOffset)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onVoiceTap)
+        .help(voiceHelp)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Ben龙语音按钮")
+        .accessibilityHint(voiceHelp)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onVoiceTap() }
+        .zIndex(3)
     }
 
     private var taskOverlay: some View {
@@ -86,11 +90,10 @@ struct NotchCompanionView: View {
         layout.mascotTopOffset
     }
 
-    private func toggleVoiceConversation() {
-        if voiceInteraction.pendingTranscript != nil {
-            voiceInteraction.cancelPending()
-        }
-        voiceInteraction.toggleConversation()
+    private var voiceHelp: String {
+        voiceInteraction.isConversationEnabled
+            ? "单击暂停持续语音"
+            : "单击开启持续语音；按住说话，松开发送"
     }
 
     private func visibleTasks(in store: AgentStore) -> [AgentThread] {

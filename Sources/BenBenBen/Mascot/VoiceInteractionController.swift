@@ -118,12 +118,13 @@ final class VoiceInteractionController: NSObject, ObservableObject, AVSpeechSynt
     }
 
     private func startRecognition(mode: RecordingMode) async {
-        guard !isRecording else { return }
+        guard !isRecording, !Task.isCancelled else { return }
 
         guard await ensurePermissions() else {
             if mode == .continuous { setConversationEnabled(false) }
             return
         }
+        guard !Task.isCancelled else { return }
         guard let speechRecognizer, speechRecognizer.isAvailable else {
             fail("当前语言的系统语音识别暂不可用")
             if mode == .continuous { scheduleContinuousRestart() }
