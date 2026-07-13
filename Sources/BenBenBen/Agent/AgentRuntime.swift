@@ -7,6 +7,7 @@ protocol AgentRuntime: Sendable {
     func readAccount(refreshToken: Bool) async throws -> AgentAccountStatus
     func startChatGPTLogin() async throws -> AgentLoginFlow
     func listThreads(_ query: AgentThreadListQuery) async throws -> AgentThreadPage
+    func readThread(id: String, includeTurns: Bool) async throws -> AgentThreadHistory
     func startThread(_ options: AgentThreadStartOptions) async throws -> AgentThread
     func resumeThread(id: String, cwd: String?) async throws -> AgentThread
     func archiveThread(id: String) async throws

@@ -236,6 +236,20 @@ actor CodexProcessActor: AgentRuntime {
         )
     }
 
+    func readThread(id: String, includeTurns: Bool = true) async throws -> AgentThreadHistory {
+        let result = try await sendRequest(
+            method: "thread/read",
+            params: .object([
+                "threadId": .string(id),
+                "includeTurns": .bool(includeTurns)
+            ])
+        )
+        guard let thread = result["thread"] else {
+            throw CodexBridgeError.invalidResponse(method: "thread/read", detail: "missing thread")
+        }
+        return try AgentThreadHistory(json: thread)
+    }
+
     func startThread(_ options: AgentThreadStartOptions) async throws -> AgentThread {
         let result = try await sendRequest(method: "thread/start", params: options.json)
         guard let thread = result["thread"] else {

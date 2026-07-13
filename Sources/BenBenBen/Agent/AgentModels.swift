@@ -64,6 +64,9 @@ struct AgentThread: Sendable, Equatable, Identifiable {
     let sessionID: String?
     let preview: String
     let name: String?
+    let parentThreadID: String?
+    let agentNickname: String?
+    let agentRole: String?
     let cwd: String?
     let modelProvider: String?
     let createdAt: Double?
@@ -79,6 +82,9 @@ struct AgentThread: Sendable, Equatable, Identifiable {
         sessionID = json["sessionId"]?.stringValue
         preview = json["preview"]?.stringValue ?? ""
         name = json["name"]?.stringValue
+        parentThreadID = json["parentThreadId"]?.stringValue
+        agentNickname = json["agentNickname"]?.stringValue
+        agentRole = json["agentRole"]?.stringValue
         cwd = json["cwd"]?.stringValue
         modelProvider = json["modelProvider"]?.stringValue
         createdAt = json["createdAt"]?.doubleValue
@@ -108,6 +114,41 @@ struct AgentTurn: Sendable, Equatable, Identifiable {
         status = json["status"]?.stringValue ?? "unknown"
         errorMessage = json["error"]?["message"]?.stringValue
         raw = json
+    }
+}
+
+struct AgentHistoryTurn: Sendable, Equatable, Identifiable {
+    let id: String
+    let status: String
+    let errorMessage: String?
+    let startedAt: Double?
+    let completedAt: Double?
+    let durationMilliseconds: Int64?
+    let items: [AgentJSON]
+    let raw: AgentJSON
+
+    init(json: AgentJSON) throws {
+        guard let id = json["id"]?.stringValue else {
+            throw CodexBridgeError.invalidResponse(method: "thread/read", detail: "missing turn.id")
+        }
+        self.id = id
+        status = json["status"]?.stringValue ?? "unknown"
+        errorMessage = json["error"]?["message"]?.stringValue
+        startedAt = json["startedAt"]?.doubleValue
+        completedAt = json["completedAt"]?.doubleValue
+        durationMilliseconds = json["durationMs"]?.integerValue
+        items = json["items"]?.arrayValue ?? []
+        raw = json
+    }
+}
+
+struct AgentThreadHistory: Sendable, Equatable {
+    let thread: AgentThread
+    let turns: [AgentHistoryTurn]
+
+    init(json: AgentJSON) throws {
+        thread = try AgentThread(json: json)
+        turns = try (json["turns"]?.arrayValue ?? []).map(AgentHistoryTurn.init(json:))
     }
 }
 
@@ -193,6 +234,7 @@ struct AgentPlanStep: Sendable, Equatable, Identifiable {
 
 enum AgentTaskActivityKind: String, Sendable, Equatable {
     case lifecycle
+    case agent
     case command
     case fileChange
     case tool
@@ -209,6 +251,45 @@ struct AgentTaskActivity: Sendable, Equatable, Identifiable {
     let detail: String?
     let status: String
     let updatedAt: Date
+}
+
+enum AgentHistoryLoadState: Sendable, Equatable {
+    case loading
+    case loaded
+    case failed(String)
+}
+
+struct AgentSubagent: Sendable, Equatable, Identifiable {
+    let threadID: String
+    let parentThreadID: String
+    var path: String?
+    var nickname: String?
+    var role: String?
+    var status: String
+    var prompt: String?
+    var message: String?
+
+    var id: String { threadID }
+
+    var displayName: String {
+        if let nickname, !nickname.isEmpty { return nickname }
+        if let role, !role.isEmpty { return role }
+        if let path, !path.isEmpty { return path }
+        return "Agent \(threadID.prefix(6))"
+    }
+}
+
+extension String {
+    var isCompanionRunning: Bool {
+        let value = lowercased()
+        return value.contains("progress") || value == "running" || value == "started" || value == "active"
+    }
+
+    var isAgentTerminal: Bool {
+        let value = lowercased()
+        return ["completed", "success", "failed", "error", "errored", "shutdown", "interrupted", "cancelled"]
+            .contains(value)
+    }
 }
 
 struct AgentTokenUsage: Sendable, Equatable {

@@ -111,12 +111,31 @@ struct TaskProgressDetailCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
+                if let parentThreadID = thread?.parentThreadID {
+                    Button {
+                        store.selectedThreadID = parentThreadID
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .buttonStyle(.plain)
+                    .help("返回主任务")
+                    .accessibilityLabel("返回主任务")
+                }
                 Circle().fill(status.companionStatusColor).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.callout.weight(.semibold)).lineLimit(1)
                     Text(status.companionStatusLabel).font(.caption2).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    Task { await store.loadThreadHistory(id: threadID, force: true) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .disabled(historyLoadState == .loading)
+                .help("重新读取 Codex 历史记录")
+                .accessibilityLabel("重新读取任务历史记录")
                 if showsCloseButton {
                     Button(action: onClose) { Image(systemName: "xmark") }
                         .buttonStyle(.plain)
@@ -127,6 +146,34 @@ struct TaskProgressDetailCard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if let pendingRequest {
                         TaskPendingRequestView(request: pendingRequest, store: store)
+                    }
+
+                    switch historyLoadState {
+                    case .loading:
+                        HStack(spacing: 7) {
+                            ProgressView().controlSize(.small)
+                            Text("正在读取永久任务记录…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    case let .failed(message):
+                        HStack(alignment: .top, spacing: 7) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("历史记录读取失败").font(.caption.weight(.semibold))
+                                Text(message)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                Button("重试") {
+                                    Task { await store.loadThreadHistory(id: threadID, force: true) }
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+                    case .loaded, nil:
+                        EmptyView()
                     }
 
                     if !plan.isEmpty {
@@ -140,8 +187,50 @@ struct TaskProgressDetailCard: View {
                         }
                     }
 
+                    if !subagents.isEmpty {
+                        Text("Agent 协作").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        ForEach(subagents) { agent in
+                            Button {
+                                store.selectedThreadID = agent.threadID
+                            } label: {
+                                HStack(alignment: .top, spacing: 7) {
+                                    Image(systemName: "person.2.fill")
+                                        .foregroundStyle(agent.status.companionStatusColor)
+                                        .frame(width: 13)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(spacing: 5) {
+                                            Text(agent.displayName).font(.caption.weight(.medium))
+                                            Text(agent.status.companionStatusLabel)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        if let prompt = agent.prompt, !prompt.isEmpty {
+                                            Text(prompt)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                        if let message = agent.message, !message.isEmpty {
+                                            Text(message)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer(minLength: 4)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .help("查看这个 Agent 的永久执行记录")
+                        }
+                    }
+
                     if !activities.isEmpty {
-                        Text("实时进展").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text("执行时间线").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         ForEach(activities) { activity in
                             HStack(alignment: .top, spacing: 7) {
                                 Image(systemName: activity.kind.companionSystemImage)
@@ -153,7 +242,7 @@ struct TaskProgressDetailCard: View {
                                         Text(detail)
                                             .font(activity.kind == .command ? .caption2.monospaced() : .caption2)
                                             .foregroundStyle(.secondary)
-                                            .lineLimit(3)
+                                            .lineLimit(usesWindowLayout ? nil : 3)
                                             .textSelection(.enabled)
                                     }
                                 }
@@ -161,18 +250,27 @@ struct TaskProgressDetailCard: View {
                         }
                     }
 
-                    if !liveReply.isEmpty {
+                    if activities.isEmpty, !liveReply.isEmpty {
                         Text("Ben龙 回复").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         Text(liveReply)
                             .font(.caption)
-                            .lineLimit(6)
+                            .lineLimit(usesWindowLayout ? nil : 6)
                             .textSelection(.enabled)
-                    } else if let output = recentOutput, !output.isEmpty {
+                    } else if activities.isEmpty, let output = recentOutput, !output.isEmpty {
                         Text("最新输出").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         Text(output)
                             .font(.caption2.monospaced())
-                            .lineLimit(5)
+                            .lineLimit(usesWindowLayout ? nil : 5)
                             .textSelection(.enabled)
+                    } else if historyLoadState == .loaded,
+                              plan.isEmpty,
+                              subagents.isEmpty,
+                              activities.isEmpty {
+                        ContentUnavailableView(
+                            "没有可显示的执行记录",
+                            systemImage: "clock.badge.questionmark",
+                            description: Text("Codex 已返回这个任务，但没有持久化 turn/items。")
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,6 +319,9 @@ struct TaskProgressDetailCard: View {
         .padding(12)
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 16))
         .overlay { RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.12), lineWidth: 1) }
+        .task(id: threadID) {
+            await store.loadThreadHistory(id: threadID)
+        }
     }
 
     private var thread: AgentThread? { store.threads.first { $0.id == threadID } }
@@ -231,8 +332,11 @@ struct TaskProgressDetailCard: View {
     private var status: String { store.activeTurns[threadID]?.status ?? thread?.status ?? "idle" }
     private var plan: [AgentPlanStep] { store.taskPlans[threadID] ?? [] }
     private var activities: [AgentTaskActivity] {
-        Array((store.taskActivities[threadID] ?? []).suffix(usesWindowLayout ? 40 : 6))
+        let values = store.taskActivities[threadID] ?? []
+        return usesWindowLayout ? values : Array(values.suffix(6))
     }
+    private var subagents: [AgentSubagent] { store.taskSubagents[threadID] ?? [] }
+    private var historyLoadState: AgentHistoryLoadState? { store.historyLoadStates[threadID] }
     private var liveReply: String {
         store.agentMessages[threadID]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
@@ -315,16 +419,31 @@ private struct AgentTaskWindowView: View {
 
             if let store = agentContext.store {
                 HSplitView {
-                    List(selection: Binding(
-                        get: { store.selectedThreadID },
-                        set: { store.selectedThreadID = $0 }
-                    )) {
-                        ForEach(sortedThreads(store)) { thread in
-                            TaskHistoryRow(thread: thread, store: store)
-                                .tag(thread.id)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(sortedThreads(store)) { thread in
+                                Button {
+                                    store.selectedThreadID = thread.id
+                                } label: {
+                                    TaskHistoryRow(thread: thread, store: store)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .contentShape(.rect)
+                                }
+                                .buttonStyle(.plain)
+                                .background(
+                                    store.selectedThreadID == thread.id ? Color.accentColor : Color.clear,
+                                    in: .rect(cornerRadius: 7)
+                                )
+                                .accessibilityAddTraits(
+                                    store.selectedThreadID == thread.id ? .isSelected : []
+                                )
+                            }
                         }
+                        .padding(6)
                     }
-                    .listStyle(.sidebar)
+                    .background(.regularMaterial)
                     .frame(minWidth: 210, idealWidth: 250, maxWidth: 310)
 
                     Group {
@@ -356,10 +475,30 @@ private struct AgentTaskWindowView: View {
     }
 
     private func sortedThreads(_ store: AgentStore) -> [AgentThread] {
-        store.threads.sorted {
+        let ordered = store.threads.sorted {
             ($0.updatedAt ?? $0.createdAt ?? 0) > ($1.updatedAt ?? $1.createdAt ?? 0)
         }
+        let ids = Set(ordered.map(\.id))
+        let roots = ordered.filter { thread in
+            guard let parentThreadID = thread.parentThreadID else { return true }
+            return !ids.contains(parentThreadID)
+        }
+        var flattened: [AgentThread] = []
+        var visited = Set<String>()
+
+        func appendTree(_ thread: AgentThread) {
+            guard visited.insert(thread.id).inserted else { return }
+            flattened.append(thread)
+            for child in ordered where child.parentThreadID == thread.id {
+                appendTree(child)
+            }
+        }
+
+        for root in roots { appendTree(root) }
+        for orphan in ordered { appendTree(orphan) }
+        return flattened
     }
+
 }
 
 private struct TaskHistoryRow: View {
@@ -375,13 +514,20 @@ private struct TaskHistoryRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.callout.weight(.medium))
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
                     .lineLimit(2)
-                Text(status.companionStatusLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    if thread.parentThreadID != nil {
+                        Text(agentLabel)
+                    }
+                    Text(status.companionStatusLabel)
+                }
+                .font(.caption2)
+                .foregroundStyle(isSelected ? Color.white.opacity(0.78) : Color.secondary)
             }
         }
         .padding(.vertical, 3)
+        .padding(.leading, thread.parentThreadID == nil ? 0 : 14)
     }
 
     private var title: String {
@@ -390,6 +536,13 @@ private struct TaskHistoryRow: View {
 
     private var status: String {
         store.activeTurns[thread.id]?.status ?? thread.status ?? "idle"
+    }
+
+    private var isSelected: Bool { store.selectedThreadID == thread.id }
+
+    private var agentLabel: String {
+        let name = thread.agentNickname ?? thread.agentRole
+        return name.map { "Agent · \($0) ·" } ?? "Agent ·"
     }
 }
 
@@ -401,6 +554,8 @@ private func companionTaskTitle(_ thread: AgentThread, store: AgentStore) -> Str
     if let name = thread.name, !name.isEmpty {
         return name
     }
+    if let nickname = thread.agentNickname, !nickname.isEmpty { return nickname }
+    if let role = thread.agentRole, !role.isEmpty { return role }
     let preview = thread.preview.trimmingCharacters(in: .whitespacesAndNewlines)
     if let userRange = preview.range(of: "\n[User]\n") {
         let userText = preview[userRange.upperBound...]
@@ -510,6 +665,7 @@ extension AgentTaskActivityKind {
     var companionSystemImage: String {
         switch self {
         case .lifecycle: return "sparkles"
+        case .agent: return "person.2.fill"
         case .command: return "terminal"
         case .fileChange: return "doc.badge.gearshape"
         case .tool: return "wrench.and.screwdriver"
@@ -522,30 +678,29 @@ extension AgentTaskActivityKind {
 }
 
 extension String {
-    var isCompanionRunning: Bool {
-        let value = lowercased()
-        return value.contains("progress") || value == "running" || value == "started"
-    }
-
     var companionStatusColor: Color {
         let value = lowercased()
-        if value.contains("progress") || value == "running" || value == "started" { return .cyan }
-        if value == "completed" || value == "success" { return .green }
-        if value == "failed" || value == "error" { return .red }
-        if value == "waiting" || value == "pending" { return .orange }
+        if value.contains("progress") || value == "running" || value == "started" || value == "active" { return .cyan }
+        if value == "completed" || value == "success" || value == "shutdown" { return .green }
+        if value == "failed" || value == "error" || value == "errored" || value == "systemerror" { return .red }
+        if value == "waiting" || value == "pending" || value == "pendinginit" { return .orange }
         if value == "interrupted" || value == "cancelled" { return .secondary }
         return .secondary
     }
 
     var companionStatusLabel: String {
         let value = lowercased()
-        if value.contains("progress") || value == "running" || value == "started" {
+        if value.contains("progress") || value == "running" || value == "started" || value == "active" {
             return "正在执行，可随时继续引导"
         }
-        if value == "completed" || value == "success" { return "已完成" }
-        if value == "failed" || value == "error" { return "执行失败" }
+        if value == "completed" || value == "success" || value == "shutdown" { return "已完成" }
+        if value == "failed" || value == "error" || value == "errored" || value == "systemerror" { return "执行失败" }
         if value == "interrupted" || value == "cancelled" { return "已停止" }
-        return "等待中"
+        if value == "waiting" || value == "pending" || value == "pendinginit" { return "等待中" }
+        if value == "idle" { return "空闲" }
+        if value == "notloaded" { return "历史任务" }
+        if value == "declined" { return "已拒绝" }
+        return "状态未知"
     }
 
     var companionPlanIcon: String {

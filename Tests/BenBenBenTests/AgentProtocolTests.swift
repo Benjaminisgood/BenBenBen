@@ -55,6 +55,13 @@ final class AgentProtocolTests: XCTestCase {
         )
     }
 
+    func testHistoricalThreadStatusesAreNotReportedAsWaiting() {
+        XCTAssertEqual("idle".companionStatusLabel, "空闲")
+        XCTAssertEqual("notLoaded".companionStatusLabel, "历史任务")
+        XCTAssertEqual("completed".companionStatusLabel, "已完成")
+        XCTAssertEqual("pending".companionStatusLabel, "等待中")
+    }
+
     func testExecutableDetectorAndFullJSONLContractAgainstFakeServer() async throws {
         let fixture = try TemporaryCodexAppServer()
         defer { fixture.remove() }
@@ -148,6 +155,14 @@ final class AgentProtocolTests: XCTestCase {
         let page = try await runtime.listThreads(AgentThreadListQuery(limit: 25, cwd: ["/tmp/project"]))
         XCTAssertEqual(page.threads.map(\.id), ["thread-1"])
         XCTAssertEqual(page.nextCursor, "next-page")
+
+        let history = try await runtime.readThread(id: "thread-1", includeTurns: true)
+        XCTAssertEqual(history.thread.id, "thread-1")
+        XCTAssertEqual(history.turns.map(\.id), ["turn-history"])
+        XCTAssertEqual(history.turns.first?.items.count, 7)
+        let historyTrace = fixture.trace.replacingOccurrences(of: "\\/", with: "/")
+        XCTAssertTrue(historyTrace.contains(#""method":"thread/read""#))
+        XCTAssertTrue(historyTrace.contains(#""includeTurns":true"#))
 
         let started = try await runtime.startThread(AgentThreadStartOptions(cwd: "/tmp/project"))
         XCTAssertEqual(started.id, "thread-new")
@@ -276,6 +291,67 @@ final class AgentProtocolTests: XCTestCase {
         await runtime.stop()
     }
 
+    @MainActor
+    func testAgentStoreLoadsPersistentTimelineAndSubagentTree() async throws {
+        let fixture = try TemporaryCodexAppServer()
+        defer { fixture.remove() }
+        let installation = try await CodexExecutableDetector.probe(fixture.executableURL)
+        let runtime = CodexProcessActor(installation: installation, requestTimeout: .seconds(3))
+        let store = AgentStore(runtime: runtime)
+
+        await store.connect(threadQuery: AgentThreadListQuery(limit: 25, cwd: ["/tmp/project"]))
+        await store.loadThreadHistory(id: "thread-1")
+
+        XCTAssertEqual(store.historyLoadStates["thread-1"], .loaded)
+        XCTAssertEqual(store.activeTurns["thread-1"]?.status, "completed")
+        XCTAssertEqual(store.agentMessages["thread-1"], "History complete")
+        XCTAssertEqual(store.commandOutputsByThread["thread-1"], "38 tests passed")
+        XCTAssertTrue(store.taskActivities["thread-1"]?.contains {
+            $0.title == "用户任务" && $0.detail == "Inspect persisted history"
+        } == true)
+        XCTAssertTrue(store.taskActivities["thread-1"]?.contains {
+            $0.kind == .agent && $0.title == "创建子 Agent"
+        } == true)
+        let subagent = try XCTUnwrap(store.taskSubagents["thread-1"]?.first)
+        XCTAssertEqual(subagent.threadID, "agent-1")
+        XCTAssertEqual(subagent.status, "completed")
+
+        await store.loadThreadHistory(id: "agent-1")
+        let loadedChild = try XCTUnwrap(store.threads.first { $0.id == "agent-1" })
+        XCTAssertEqual(loadedChild.parentThreadID, "thread-1")
+        XCTAssertEqual(loadedChild.agentNickname, "Scout")
+        XCTAssertEqual(store.agentMessages["agent-1"], "Subagent result")
+        XCTAssertEqual(store.taskSubagents["thread-1"]?.first?.nickname, "Scout")
+        await runtime.stop()
+    }
+
+    @MainActor
+    func testHistoryLoadDoesNotOverwriteRunningTurnOrSeedItsReply() async throws {
+        let fixture = try TemporaryCodexAppServer()
+        defer { fixture.remove() }
+        let installation = try await CodexExecutableDetector.probe(fixture.executableURL)
+        let runtime = CodexProcessActor(installation: installation, requestTimeout: .seconds(3))
+        let store = AgentStore(runtime: runtime)
+
+        await store.connect(threadQuery: AgentThreadListQuery(limit: 25, cwd: ["/tmp/project"]))
+        let sent = await store.send(
+            "Start current work",
+            to: "thread-1",
+            fallbackOptions: AgentThreadStartOptions(cwd: "/tmp/project")
+        )
+        XCTAssertEqual(sent?.turn.id, "turn-new")
+        XCTAssertEqual(store.activeTurns["thread-1"]?.status, "inProgress")
+        XCTAssertEqual(store.agentMessages["thread-1"], "")
+        let outputBeforeHistoryLoad = store.commandOutputsByThread["thread-1"]
+
+        await store.loadThreadHistory(id: "thread-1")
+        XCTAssertEqual(store.activeTurns["thread-1"]?.id, "turn-new")
+        XCTAssertEqual(store.activeTurns["thread-1"]?.status, "inProgress")
+        XCTAssertEqual(store.agentMessages["thread-1"], "")
+        XCTAssertEqual(store.commandOutputsByThread["thread-1"], outputBeforeHistoryLoad)
+        await runtime.stop()
+    }
+
     func testInstalledStableSchemaStillContainsBridgeSurface() async throws {
         let installation: CodexInstallation
         do {
@@ -312,7 +388,7 @@ final class AgentProtocolTests: XCTestCase {
 
         for method in [
             "initialize", "account/read", "account/login/start", "thread/list", "thread/start",
-            "thread/resume", "thread/archive", "turn/start", "turn/steer", "turn/interrupt"
+            "thread/read", "thread/resume", "thread/archive", "turn/start", "turn/steer", "turn/interrupt"
         ] {
             XCTAssertTrue(clientRequest.contains("\"\(method)\""), "Missing stable method \(method)")
         }
@@ -430,7 +506,7 @@ def emit(value):
     print(json.dumps(value, separators=(",", ":")), flush=True)
 
 def thread(thread_id):
-    return {
+    value = {
         "id": thread_id,
         "sessionId": thread_id,
         "preview": "Fixture thread",
@@ -442,6 +518,49 @@ def thread(thread_id):
         "status": {"type": "idle"},
         "futureField": "must be ignored"
     }
+    if thread_id == "agent-1":
+        value["parentThreadId"] = "thread-1"
+        value["agentNickname"] = "Scout"
+        value["agentRole"] = "explorer"
+        value["preview"] = "Inspect the parser"
+    return value
+
+def thread_history(thread_id):
+    value = thread(thread_id)
+    if thread_id == "agent-1":
+        value["turns"] = [{
+            "id": "agent-turn", "status": "completed", "startedAt": 4, "completedAt": 5,
+            "items": [
+                {"id": "agent-reply", "type": "agentMessage", "text": "Subagent result"}
+            ],
+            "error": None
+        }]
+        return value
+    value["turns"] = [{
+        "id": "turn-history", "status": "completed", "startedAt": 1, "completedAt": 3,
+        "items": [
+            {"id": "user-history", "type": "userMessage", "content": [
+                {"type": "text", "text": "[BenBenBen operating contract]\n\n[User]\nInspect persisted history"}
+            ]},
+            {"id": "reason-history", "type": "reasoning", "summary": ["Read source"], "content": []},
+            {"id": "command-history", "type": "commandExecution", "command": "swift test",
+             "cwd": "/tmp/project", "commandActions": [], "aggregatedOutput": "38 tests passed",
+             "status": "completed", "exitCode": 0},
+            {"id": "file-history", "type": "fileChange", "status": "completed", "changes": [
+                {"path": "/tmp/project/AgentStore.swift", "kind": "update", "diff": "+ history"}
+            ]},
+            {"id": "spawn-history", "type": "collabAgentToolCall", "tool": "spawnAgent",
+             "senderThreadId": "thread-1", "receiverThreadIds": ["agent-1"], "status": "completed",
+             "prompt": "Inspect the parser", "agentsStates": {
+                "agent-1": {"status": "completed", "message": "Parser checked"}
+             }},
+            {"id": "agent-activity", "type": "subAgentActivity", "agentThreadId": "agent-1",
+             "agentPath": "/root/scout", "kind": "started"},
+            {"id": "reply-history", "type": "agentMessage", "text": "History complete"}
+        ],
+        "error": None
+    }]
+    return value
 
 def turn(turn_id, status="inProgress"):
     return {"id": turn_id, "status": status, "items": [], "error": None}
@@ -523,7 +642,13 @@ for line in sys.stdin:
         }})
     elif method == "thread/list":
         assert params["limit"] == 25
-        emit({"id": request_id, "result": {"data": [thread("thread-1")], "nextCursor": "next-page", "backwardsCursor": None}})
+        if params.get("cursor") == "next-page":
+            emit({"id": request_id, "result": {"data": [], "nextCursor": None, "backwardsCursor": None}})
+        else:
+            emit({"id": request_id, "result": {"data": [thread("thread-1")], "nextCursor": "next-page", "backwardsCursor": None}})
+    elif method == "thread/read":
+        assert params["includeTurns"] is True
+        emit({"id": request_id, "result": {"thread": thread_history(params["threadId"])}})
     elif method == "thread/start":
         assert params["approvalPolicy"] in ["on-request", "never"]
         if params["approvalPolicy"] == "never":

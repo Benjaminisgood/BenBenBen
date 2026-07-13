@@ -17,6 +17,8 @@ final class AgentStore: ObservableObject {
     @Published private(set) var diffs: [String: String] = [:]
     @Published private(set) var taskPlans: [String: [AgentPlanStep]] = [:]
     @Published private(set) var taskActivities: [String: [AgentTaskActivity]] = [:]
+    @Published private(set) var taskSubagents: [String: [AgentSubagent]] = [:]
+    @Published private(set) var historyLoadStates: [String: AgentHistoryLoadState] = [:]
     @Published private(set) var taskPrompts: [String: String] = [:]
     @Published private(set) var latestGuidance: [String: String] = [:]
     @Published private(set) var executionModes: [String: AgentTaskExecutionMode] = [:]
@@ -79,6 +81,7 @@ final class AgentStore: ObservableObject {
     func connect(threadQuery: AgentThreadListQuery = AgentThreadListQuery()) async {
         lastError = nil
         loadedThreadIDs.removeAll()
+        historyLoadStates.removeAll()
         do {
             _ = try await runtime.start()
             await refreshAccount()
@@ -111,12 +114,47 @@ final class AgentStore: ObservableObject {
 
     func reloadThreads(query: AgentThreadListQuery = AgentThreadListQuery()) async {
         do {
-            let page = try await runtime.listThreads(query)
-            threads = page.threads
-            if selectedThreadID == nil || !page.threads.contains(where: { $0.id == selectedThreadID }) {
-                selectedThreadID = page.threads.first?.id
+            var request = query
+            var loaded: [AgentThread] = []
+            var loadedIDs = Set<String>()
+            var seenCursors = Set<String>()
+            while true {
+                let page = try await runtime.listThreads(request)
+                for thread in page.threads where loadedIDs.insert(thread.id).inserted {
+                    loaded.append(thread)
+                }
+                guard let nextCursor = page.nextCursor,
+                      seenCursors.insert(nextCursor).inserted else { break }
+                request.cursor = nextCursor
+            }
+            threads = loaded
+            if selectedThreadID == nil || !loaded.contains(where: { $0.id == selectedThreadID }) {
+                selectedThreadID = loaded.first?.id
             }
         } catch {
+            record(error)
+        }
+    }
+
+    func loadThreadHistory(id: String, force: Bool = false) async {
+        if !force {
+            switch historyLoadStates[id] {
+            case .loading, .loaded:
+                return
+            case .failed, nil:
+                break
+            }
+        }
+
+        historyLoadStates[id] = .loading
+        do {
+            let history = try await runtime.readThread(id: id, includeTurns: true)
+            apply(history)
+            historyLoadStates[id] = .loaded
+            lastError = nil
+        } catch {
+            let message = error.localizedDescription
+            historyLoadStates[id] = .failed(message)
             record(error)
         }
     }
@@ -463,6 +501,72 @@ final class AgentStore: ObservableObject {
         }
     }
 
+    private func apply(_ history: AgentThreadHistory) {
+        let threadID = history.thread.id
+        upsert(history.thread)
+
+        if let lastTurn = history.turns.last,
+           let turn = try? AgentTurn(json: lastTurn.raw) {
+            let currentTurnIsRunning = activeTurns[threadID]?.status.isCompanionRunning == true
+            if !currentTurnIsRunning || turn.status.isCompanionRunning {
+                activeTurns[threadID] = turn
+            }
+        }
+
+        let projection = AgentThreadHistoryProjection.make(from: history)
+        for activity in projection.activities {
+            upsertActivity(activity, threadID: threadID)
+        }
+
+        let currentTurnIsRunning = activeTurns[threadID]?.status.isCompanionRunning == true
+        if let message = projection.latestAgentMessage, !currentTurnIsRunning {
+            agentMessages[threadID] = message
+        }
+        if let output = projection.latestCommandOutput, !currentTurnIsRunning {
+            commandOutputsByThread[threadID] = output
+        }
+
+        var subagents = projection.subagents
+        for index in subagents.indices {
+            guard let child = threads.first(where: { $0.id == subagents[index].threadID }) else { continue }
+            subagents[index].nickname = child.agentNickname ?? subagents[index].nickname
+            subagents[index].role = child.agentRole ?? subagents[index].role
+            if let activeStatus = activeTurns[child.id]?.status {
+                subagents[index].status = activeStatus
+            } else if !subagents[index].status.isAgentTerminal, let childStatus = child.status {
+                subagents[index].status = childStatus
+            }
+        }
+        taskSubagents[threadID] = subagents
+
+        if let parentThreadID = history.thread.parentThreadID {
+            var siblings = taskSubagents[parentThreadID, default: []]
+            let status = activeTurns[threadID]?.status ?? history.thread.status ?? "notLoaded"
+            let child = AgentSubagent(
+                threadID: threadID,
+                parentThreadID: parentThreadID,
+                path: nil,
+                nickname: history.thread.agentNickname,
+                role: history.thread.agentRole,
+                status: status,
+                prompt: history.thread.preview,
+                message: projection.latestAgentMessage
+            )
+            if let index = siblings.firstIndex(where: { $0.threadID == threadID }) {
+                var merged = siblings[index]
+                merged.nickname = child.nickname ?? merged.nickname
+                merged.role = child.role ?? merged.role
+                merged.status = child.status
+                if let prompt = child.prompt, !prompt.isEmpty { merged.prompt = prompt }
+                merged.message = child.message ?? merged.message
+                siblings[index] = merged
+            } else {
+                siblings.append(child)
+            }
+            taskSubagents[parentThreadID] = siblings.sorted { $0.displayName < $1.displayName }
+        }
+    }
+
     private func upsert(_ thread: AgentThread) {
         if let index = threads.firstIndex(where: { $0.id == thread.id }) {
             threads[index] = thread
@@ -476,6 +580,11 @@ final class AgentStore: ObservableObject {
         threads.removeAll { $0.id == id }
         taskPlans[id] = nil
         taskActivities[id] = nil
+        taskSubagents[id] = nil
+        historyLoadStates[id] = nil
+        for parentID in Array(taskSubagents.keys) {
+            taskSubagents[parentID]?.removeAll { $0.threadID == id }
+        }
         taskPrompts[id] = nil
         persistTaskPrompts()
         latestGuidance[id] = nil
@@ -546,9 +655,6 @@ final class AgentStore: ObservableObject {
             activities.append(activity)
         }
         activities.sort { $0.updatedAt < $1.updatedAt }
-        if activities.count > 80 {
-            activities.removeFirst(activities.count - 80)
-        }
         taskActivities[threadID] = activities
     }
 
@@ -605,5 +711,368 @@ final class AgentStore: ObservableObject {
         if values.count > limit {
             values.removeFirst(values.count - limit)
         }
+    }
+}
+
+private struct AgentThreadHistoryProjection {
+    let activities: [AgentTaskActivity]
+    let latestAgentMessage: String?
+    let latestCommandOutput: String?
+    let subagents: [AgentSubagent]
+
+    static func make(from history: AgentThreadHistory) -> AgentThreadHistoryProjection {
+        var activities: [AgentTaskActivity] = []
+        var latestAgentMessage: String?
+        var latestCommandOutput: String?
+        var subagents: [String: AgentSubagent] = [:]
+
+        for (turnIndex, turn) in history.turns.enumerated() {
+            let baseTimestamp = turn.startedAt
+                ?? turn.completedAt
+                ?? history.thread.updatedAt
+                ?? history.thread.createdAt
+                ?? 0
+            activities.append(
+                AgentTaskActivity(
+                    id: "history:\(turn.id):start",
+                    kind: .lifecycle,
+                    title: history.turns.count == 1 ? "任务开始执行" : "第 \(turnIndex + 1) 轮开始",
+                    detail: nil,
+                    status: turn.status == "inProgress" ? turn.status : "completed",
+                    updatedAt: Date(timeIntervalSince1970: baseTimestamp)
+                )
+            )
+
+            for (itemIndex, item) in turn.items.enumerated() {
+                let timestamp = Date(
+                    timeIntervalSince1970: baseTimestamp + Double(itemIndex + 1) / 1_000
+                )
+                if let activity = activity(
+                    from: item,
+                    turnID: turn.id,
+                    timestamp: timestamp,
+                    parentThreadID: history.thread.id,
+                    subagents: &subagents,
+                    latestAgentMessage: &latestAgentMessage,
+                    latestCommandOutput: &latestCommandOutput
+                ) {
+                    activities.append(activity)
+                }
+            }
+
+            if turn.status != "inProgress" {
+                let endingTimestamp = turn.completedAt
+                    ?? baseTimestamp + Double(turn.items.count + 1) / 1_000
+                activities.append(
+                    AgentTaskActivity(
+                        id: "history:\(turn.id):end",
+                        kind: .lifecycle,
+                        title: turn.status == "completed" ? "任务已经完成" : "任务已结束",
+                        detail: turn.errorMessage,
+                        status: turn.status,
+                        updatedAt: Date(timeIntervalSince1970: endingTimestamp)
+                    )
+                )
+            }
+        }
+
+        return AgentThreadHistoryProjection(
+            activities: activities.sorted { $0.updatedAt < $1.updatedAt },
+            latestAgentMessage: latestAgentMessage,
+            latestCommandOutput: latestCommandOutput,
+            subagents: subagents.values.sorted { $0.displayName < $1.displayName }
+        )
+    }
+
+    private static func activity(
+        from item: AgentJSON,
+        turnID: String,
+        timestamp: Date,
+        parentThreadID: String,
+        subagents: inout [String: AgentSubagent],
+        latestAgentMessage: inout String?,
+        latestCommandOutput: inout String?
+    ) -> AgentTaskActivity? {
+        guard let type = item["type"]?.stringValue else { return nil }
+        let itemID = item["id"]?.stringValue ?? "\(turnID):\(type):\(timestamp.timeIntervalSince1970)"
+        let status = item["status"]?.stringValue ?? "completed"
+
+        switch type {
+        case "userMessage":
+            let text = (item["content"]?.arrayValue ?? [])
+                .compactMap { $0["text"]?.stringValue }
+                .joined(separator: "\n")
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .message,
+                title: "用户任务",
+                detail: visibleUserText(text),
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "agentMessage":
+            let text = item["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let text, !text.isEmpty { latestAgentMessage = text }
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .message,
+                title: "Ben龙 回复",
+                detail: text,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "reasoning":
+            let summary = item["summary"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            let content = item["content"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            let detail = (summary.isEmpty ? content : summary).joined(separator: "\n")
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .reasoning,
+                title: "分析过程",
+                detail: detail.isEmpty ? nil : detail,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "plan":
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .reasoning,
+                title: "执行计划",
+                detail: item["text"]?.stringValue,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "commandExecution":
+            let command = item["command"]?.stringValue ?? ""
+            let output = item["aggregatedOutput"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let output, !output.isEmpty { latestCommandOutput = output }
+            let detail = [command.isEmpty ? nil : "$ \(command)", output]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .command,
+                title: status == "completed" ? "命令执行完成" : "命令执行",
+                detail: detail.isEmpty ? nil : detail,
+                status: status,
+                updatedAt: timestamp
+            )
+
+        case "fileChange":
+            let changes = (item["changes"]?.arrayValue ?? []).compactMap { change -> String? in
+                guard let path = change["path"]?.stringValue else { return nil }
+                if let kind = change["kind"]?.stringValue { return "\(kind) · \(path)" }
+                return path
+            }
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .fileChange,
+                title: status == "completed" ? "文件修改完成" : "文件修改",
+                detail: changes.isEmpty ? nil : changes.joined(separator: "\n"),
+                status: status,
+                updatedAt: timestamp
+            )
+
+        case "mcpToolCall":
+            let tool = [item["server"]?.stringValue, item["tool"]?.stringValue]
+                .compactMap { $0 }
+                .joined(separator: " · ")
+            let error = compactJSON(item["error"])
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .tool,
+                title: status == "completed" ? "工具调用完成" : "工具调用",
+                detail: [tool.isEmpty ? nil : tool, error].compactMap { $0 }.joined(separator: "\n"),
+                status: status,
+                updatedAt: timestamp
+            )
+
+        case "dynamicToolCall":
+            let tool = [item["namespace"]?.stringValue, item["tool"]?.stringValue]
+                .compactMap { $0 }
+                .joined(separator: " · ")
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .tool,
+                title: status == "completed" ? "工具调用完成" : "工具调用",
+                detail: tool.isEmpty ? nil : tool,
+                status: status,
+                updatedAt: timestamp
+            )
+
+        case "collabAgentToolCall":
+            let tool = item["tool"]?.stringValue ?? "collaboration"
+            let prompt = item["prompt"]?.stringValue
+            let receiverThreadIDs = item["receiverThreadIds"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            let states = item["agentsStates"]?.objectValue ?? [:]
+            for threadID in Set(receiverThreadIDs).union(states.keys) {
+                let state = states[threadID]
+                var subagent = subagents[threadID] ?? AgentSubagent(
+                    threadID: threadID,
+                    parentThreadID: parentThreadID,
+                    path: nil,
+                    nickname: nil,
+                    role: nil,
+                    status: status,
+                    prompt: prompt,
+                    message: nil
+                )
+                subagent.status = state?["status"]?.stringValue ?? subagent.status
+                subagent.prompt = prompt ?? subagent.prompt
+                subagent.message = state?["message"]?.stringValue ?? subagent.message
+                subagents[threadID] = subagent
+            }
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .agent,
+                title: collaborationTitle(tool),
+                detail: [prompt, receiverThreadIDs.isEmpty ? nil : receiverThreadIDs.joined(separator: "、")]
+                    .compactMap { $0 }
+                    .joined(separator: "\n"),
+                status: status,
+                updatedAt: timestamp
+            )
+
+        case "subAgentActivity":
+            guard let threadID = item["agentThreadId"]?.stringValue else { return nil }
+            let path = item["agentPath"]?.stringValue
+            let kind = item["kind"]?.stringValue ?? "interacted"
+            var subagent = subagents[threadID] ?? AgentSubagent(
+                threadID: threadID,
+                parentThreadID: parentThreadID,
+                path: path,
+                nickname: nil,
+                role: nil,
+                status: "notLoaded",
+                prompt: nil,
+                message: nil
+            )
+            subagent.path = path ?? subagent.path
+            if kind == "started", !subagent.status.isAgentTerminal {
+                subagent.status = "running"
+            }
+            if kind == "interrupted" { subagent.status = "interrupted" }
+            subagents[threadID] = subagent
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .agent,
+                title: kind == "started" ? "子 Agent 开始执行" : "子 Agent 状态更新",
+                detail: [path, threadID].compactMap { $0 }.joined(separator: " · "),
+                status: subagent.status,
+                updatedAt: timestamp
+            )
+
+        case "webSearch":
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .tool,
+                title: "网页搜索",
+                detail: item["query"]?.stringValue,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "imageView":
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .tool,
+                title: "查看图片",
+                detail: item["path"]?.stringValue,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "imageGeneration":
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .tool,
+                title: "生成图片",
+                detail: item["savedPath"]?.stringValue,
+                status: status,
+                updatedAt: timestamp
+            )
+
+        case "sleep":
+            let milliseconds = item["durationMs"]?.integerValue ?? 0
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .lifecycle,
+                title: "等待",
+                detail: "\(milliseconds) ms",
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "enteredReviewMode":
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .lifecycle,
+                title: "进入代码审查",
+                detail: item["review"]?.stringValue,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "exitedReviewMode":
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .lifecycle,
+                title: "完成代码审查",
+                detail: item["review"]?.stringValue,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        case "contextCompaction":
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .lifecycle,
+                title: "压缩任务上下文",
+                detail: nil,
+                status: "completed",
+                updatedAt: timestamp
+            )
+
+        default:
+            return AgentTaskActivity(
+                id: itemID,
+                kind: .lifecycle,
+                title: "处理 \(type)",
+                detail: nil,
+                status: status,
+                updatedAt: timestamp
+            )
+        }
+    }
+
+    private static func visibleUserText(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let range = trimmed.range(of: "\n[User]\n") else { return trimmed }
+        let visible = trimmed[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return visible.isEmpty ? trimmed : visible
+    }
+
+    private static func collaborationTitle(_ tool: String) -> String {
+        switch tool {
+        case "spawnAgent": return "创建子 Agent"
+        case "sendInput": return "向子 Agent 发送引导"
+        case "resumeAgent": return "继续子 Agent"
+        case "wait": return "等待子 Agent"
+        case "closeAgent": return "关闭子 Agent"
+        default: return "Agent 协作"
+        }
+    }
+
+    private static func compactJSON(_ value: AgentJSON?) -> String? {
+        guard let value, value != .null,
+              let data = try? JSONEncoder().encode(value),
+              var text = String(data: data, encoding: .utf8) else { return nil }
+        if text.count > 500 { text = String(text.prefix(499)) + "…" }
+        return text
     }
 }
