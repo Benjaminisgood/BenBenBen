@@ -3,11 +3,8 @@ import CoreGraphics
 
 struct NotchLayout: Equatable {
     let notchSize: NSSize
-    let compactSize: NSSize
-    let expandedSize: NSSize
-    let expandedDetailSize: NSSize
-    let compactTopOffset: CGFloat
-    let expandedTopOffset: CGFloat
+    let panelSize: NSSize
+    let topOffset: CGFloat
 }
 
 extension NSScreen {
@@ -94,26 +91,17 @@ enum NotchGeometry {
         )
         let availableHeight = max(1, visibleBounds.height - verticalMargin)
 
-        // Keep enough height below the physical notch for the mascot and status
-        // to remain visible instead of drawing entirely behind the camera area.
-        let compactTargetWidth = clamp(notch.width + 44, lower: 210, upper: 270)
-        let compactTargetHeight = clamp(notch.height + 30, lower: 58, upper: 68)
-        let compactWidth = min(compactTargetWidth, availableWidth)
-        let compactHeight = min(compactTargetHeight, availableHeight)
-
-        // Expanded Ben龙 is intentionally a small, top-attached square. The
-        // physical notch remains the visual anchor; hovering only reveals more
-        // black space below it instead of turning the companion into a card.
-        let expandedSide = min(300, availableWidth, availableHeight)
-        let expandedSize = NSSize(width: expandedSide, height: expandedSide)
+        // Ben龙 now has one permanent footprint. It neither widens nor expands
+        // on hover; only unusually constrained displays may shrink it to fit.
+        let panelSize = NSSize(
+            width: min(186, availableWidth),
+            height: min(140, availableHeight)
+        )
 
         return NotchLayout(
             notchSize: notch,
-            compactSize: NSSize(width: compactWidth, height: compactHeight),
-            expandedSize: expandedSize,
-            expandedDetailSize: expandedSize,
-            compactTopOffset: 0,
-            expandedTopOffset: 0
+            panelSize: panelSize,
+            topOffset: 0
         )
     }
 
@@ -149,7 +137,4 @@ enum NotchGeometry {
         return size
     }
 
-    private static func clamp(_ value: CGFloat, lower: CGFloat, upper: CGFloat) -> CGFloat {
-        min(max(value, lower), upper)
-    }
 }

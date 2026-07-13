@@ -2,7 +2,7 @@
 
 ![BenBenBen preview](docs/assets/readme-hero.png)
 
-`BenBenBen` 是住在 MacBook 刘海后面的个人 Codex 伙伴。紧凑刘海悬停后只向下展开成小型黑色正方形，Ben龙保持原位；点击龙开始或暂停语音。HTML、PY、MD、SCRIPTS、PLIST 五个多标签共同窗口，加上单实例任务窗口，共同组成六窗口协作界面。
+`BenBenBen` 是住在 MacBook 刘海后面的个人 Codex 伙伴。刘海伙伴固定为 `186 × 140` 的纯黑区域，不再折叠或悬停展开；点击龙开始或暂停语音。HTML、PY、MD、SCRIPTS、PLIST 五个多标签共同窗口，加上单实例任务窗口，共同组成六窗口协作界面。
 
 ## 核心能力
 

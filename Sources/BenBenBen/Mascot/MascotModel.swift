@@ -51,8 +51,8 @@ final class MascotModel: ObservableObject {
         .store(in: &agentCancellables)
     }
 
-    /// The expanded notch is the awake conversation surface. Ambient play is
-    /// allowed only while the dragon is tucked away and operationally idle.
+    /// Voice interaction is the awake conversation state. Ambient play is
+    /// allowed only while the dragon is operationally idle.
     func setAwake(_ awake: Bool) {
         guard isAwake != awake else { return }
         isAwake = awake

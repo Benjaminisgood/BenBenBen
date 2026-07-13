@@ -42,7 +42,6 @@ final class AppModel: ObservableObject {
     private lazy var notchController = NotchPanelController(
         mascotModel: mascotModel,
         voiceInteraction: voiceInteraction,
-        screenContext: screenContext,
         agentContext: agentContext,
         onSelectTask: { [weak self] threadID in
             self?.showTaskWindow(threadID: threadID)
@@ -88,7 +87,7 @@ final class AppModel: ObservableObject {
     }
 
     func showNotch() {
-        notchController.expand(animated: true)
+        notchController.show()
     }
 
     func showAgent() {
