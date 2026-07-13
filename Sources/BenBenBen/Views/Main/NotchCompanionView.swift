@@ -172,6 +172,9 @@ struct NotchCompanionView: View {
                     )
                     .scaleEffect(dragonHasWalkedOut ? 1 : 0.34, anchor: .top)
                     .offset(y: dragonHasWalkedOut ? 8 : -96)
+                    .contentShape(Rectangle())
+                    .gesture(mascotTapGesture)
+                    .help("单击回到当前工作 · 双击新任务")
 
                     if let agentStore = agentContext.store,
                        !visibleTasks(in: agentStore).isEmpty {
@@ -194,9 +197,6 @@ struct NotchCompanionView: View {
                             .offset(x: -14, y: 14)
                     }
                 }
-                .contentShape(Rectangle())
-                .gesture(mascotTapGesture)
-                .help("单击回到当前工作 · 双击新任务")
 
                 if let detailThreadID, let agentStore = agentContext.store {
                     TaskProgressDetailCard(
