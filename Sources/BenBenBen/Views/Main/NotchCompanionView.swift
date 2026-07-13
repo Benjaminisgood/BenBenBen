@@ -81,6 +81,11 @@ struct NotchCompanionView: View {
                 dragonHasWalkedOut = false
             }
         }
+        .onChange(of: runningTaskIDs) { _, runningIDs in
+            if let detailThreadID, !runningIDs.contains(detailThreadID) {
+                self.detailThreadID = nil
+            }
+        }
     }
 
     private var background: some View {
@@ -195,9 +200,21 @@ struct NotchCompanionView: View {
                         .foregroundStyle(.cyan)
                 }
             }
+            if voiceInteraction.isConversationEnabled {
+                HStack(spacing: 3) {
+                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                    Image(systemName: "phone.fill").font(.caption2).foregroundStyle(.green)
+                }
+                .help("持续语音通话已开启")
+                .accessibilityLabel("持续语音通话已开启")
+            }
             if screenContext.isEnabled {
-                Image(systemName: "eye.fill").font(.caption2).foregroundStyle(.green)
-                    .help(screenContext.status.label)
+                HStack(spacing: 3) {
+                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                    Image(systemName: "eye.fill").font(.caption2).foregroundStyle(.green)
+                }
+                .help("共享屏幕上下文已开启；会定时截图给 Codex")
+                .accessibilityLabel("共享屏幕上下文已开启")
             }
         }
         .foregroundStyle(.secondary)
@@ -280,7 +297,16 @@ struct NotchCompanionView: View {
             }
             .buttonStyle(.glass)
             .foregroundStyle(screenContext.isEnabled ? Color.green : Color.secondary)
-            .help(screenContext.isEnabled ? "停止共享屏幕上下文" : "允许 Codex 看到发送时的当前屏幕")
+            .help(
+                screenContext.isEnabled
+                    ? "停止定时截图给 Codex"
+                    : "允许定时截图给 Codex（共享屏幕上下文）"
+            )
+            .accessibilityLabel(
+                screenContext.isEnabled
+                    ? "停止共享屏幕上下文"
+                    : "允许定时截图给 Codex"
+            )
 
             Button(action: send) { Image(systemName: "paperplane.fill") }
                 .buttonStyle(.glassProminent)
@@ -362,12 +388,18 @@ struct NotchCompanionView: View {
     }
 
     private func visibleTasks(in store: AgentStore) -> [AgentThread] {
-        Array(store.threads.sorted { left, right in
-            let leftRunning = store.activeTurns[left.id]?.status.isCompanionRunning == true
-            let rightRunning = store.activeTurns[right.id]?.status.isCompanionRunning == true
-            if leftRunning != rightRunning { return leftRunning }
+        Array(store.threads.filter { thread in
+            store.activeTurns[thread.id]?.status.isCompanionRunning == true
+        }.sorted { left, right in
             return (left.updatedAt ?? left.createdAt ?? 0) > (right.updatedAt ?? right.createdAt ?? 0)
         }.prefix(8))
+    }
+
+    private var runningTaskIDs: [String] {
+        guard let store = agentContext.store else { return [] }
+        return store.activeTurns.compactMap { threadID, turn in
+            turn.status.isCompanionRunning ? threadID : nil
+        }.sorted()
     }
 
     private func taskTitle(_ thread: AgentThread, store: AgentStore) -> String {

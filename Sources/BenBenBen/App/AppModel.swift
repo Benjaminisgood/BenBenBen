@@ -259,6 +259,7 @@ final class AppModel: ObservableObject {
                 fallbackOptions: fallbackOptions
             ) {
                 store.selectedThreadID = sent.threadID
+                store.setTaskDisplayPrompt(prompt, for: sent.threadID)
                 let turnKey = Self.turnKey(threadID: sent.threadID, turnID: sent.turn.id)
                 artifactBaselines[turnKey] = artifactBaseline
                 if proactive {

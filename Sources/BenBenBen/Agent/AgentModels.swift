@@ -168,12 +168,19 @@ enum AgentTaskExecutionMode: String, CaseIterable, Identifiable, Sendable {
 
 struct AgentTurnStartOptions: Sendable, Equatable {
     var approvalPolicy: String?
-    var sandbox: String?
+    var sandboxPolicy: AgentJSON?
     var approvalsReviewer: String?
 
     init(executionMode: AgentTaskExecutionMode? = nil) {
         approvalPolicy = executionMode?.approvalPolicy
-        sandbox = executionMode?.sandbox
+        switch executionMode {
+        case .askMe, .autoReview:
+            sandboxPolicy = .object(["type": .string("workspaceWrite")])
+        case .fullAccess:
+            sandboxPolicy = .object(["type": .string("dangerFullAccess")])
+        case nil:
+            sandboxPolicy = nil
+        }
         approvalsReviewer = executionMode?.approvalsReviewer
     }
 }

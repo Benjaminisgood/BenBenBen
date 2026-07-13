@@ -44,6 +44,17 @@ final class AgentProtocolTests: XCTestCase {
         XCTAssertFalse(CodexExecutableDetector.isVersion("0.142.5", newerThan: "0.144.0-alpha.4"))
     }
 
+    func testTurnStartSandboxUsesTaggedPolicyObjects() {
+        XCTAssertEqual(
+            AgentTurnStartOptions(executionMode: .fullAccess).sandboxPolicy,
+            .object(["type": .string("dangerFullAccess")])
+        )
+        XCTAssertEqual(
+            AgentTurnStartOptions(executionMode: .autoReview).sandboxPolicy,
+            .object(["type": .string("workspaceWrite")])
+        )
+    }
+
     func testExecutableDetectorAndFullJSONLContractAgainstFakeServer() async throws {
         let fixture = try TemporaryCodexAppServer()
         defer { fixture.remove() }
@@ -154,7 +165,7 @@ final class AgentProtocolTests: XCTestCase {
         XCTAssertTrue(fixture.trace.contains(#""type":"localImage""#))
         XCTAssertTrue(fixture.trace.contains("current-screen.png"))
         XCTAssertTrue(fixture.trace.contains(#""approvalPolicy":"never""#))
-        XCTAssertTrue(fixture.trace.contains(#""sandboxPolicy":"danger-full-access""#))
+        XCTAssertTrue(fixture.trace.contains("dangerFullAccess"))
         let steeredID = try await runtime.steerTurn(
             threadID: "thread-new",
             turnID: "turn-new",
@@ -253,13 +264,15 @@ final class AgentProtocolTests: XCTestCase {
         XCTAssertEqual(store.executionMode(for: thread.id), .fullAccess)
         let startedTurn = await store.send("Run in parallel", to: thread.id, fallbackOptions: options)
         let sent = try XCTUnwrap(startedTurn)
+        store.setTaskDisplayPrompt("Visible user task", for: thread.id)
+        XCTAssertEqual(store.taskPrompts[thread.id], "Visible user task")
         XCTAssertEqual(store.latestGuidance[thread.id], "收到，我开始处理这个任务。")
 
         let accepted = await store.steer("Focus on the HTML first", threadID: thread.id, turnID: sent.turn.id)
         XCTAssertTrue(accepted)
         XCTAssertTrue(store.latestGuidance[thread.id]?.contains("Focus on the HTML first") == true)
         XCTAssertTrue(fixture.trace.contains(#""approvalPolicy":"never""#))
-        XCTAssertTrue(fixture.trace.contains(#""sandboxPolicy":"danger-full-access""#))
+        XCTAssertTrue(fixture.trace.contains("dangerFullAccess"))
         await runtime.stop()
     }
 
@@ -528,6 +541,10 @@ for line in sys.stdin:
         emit({"id": request_id, "result": {}})
     elif method == "turn/start":
         assert params["input"][0]["text_elements"] == []
+        if params.get("approvalPolicy") == "never":
+            assert params["sandboxPolicy"] == {"type": "dangerFullAccess"}
+        elif "sandboxPolicy" in params:
+            assert params["sandboxPolicy"] == {"type": "workspaceWrite"}
         emit({"id": request_id, "result": {"turn": turn("turn-new")}})
     elif method == "turn/steer":
         assert params["expectedTurnId"] == "turn-new"

@@ -269,6 +269,12 @@ final class AgentStore: ObservableObject {
         executionModes[threadID] ?? defaultExecutionMode
     }
 
+    func setTaskDisplayPrompt(_ prompt: String, for threadID: String) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        taskPrompts[threadID] = trimmed
+    }
+
     func setExecutionMode(_ mode: AgentTaskExecutionMode, for threadID: String) {
         executionModes[threadID] = mode
         if mode != .askMe {

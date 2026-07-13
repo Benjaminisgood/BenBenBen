@@ -287,8 +287,8 @@ actor CodexProcessActor: AgentRuntime {
         if let approvalPolicy = options.approvalPolicy {
             params["approvalPolicy"] = .string(approvalPolicy)
         }
-        if let sandbox = options.sandbox {
-            params["sandboxPolicy"] = .string(sandbox)
+        if let sandboxPolicy = options.sandboxPolicy {
+            params["sandboxPolicy"] = sandboxPolicy
         }
         if let approvalsReviewer = options.approvalsReviewer {
             params["approvalsReviewer"] = .string(approvalsReviewer)
