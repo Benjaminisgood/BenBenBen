@@ -62,6 +62,28 @@ final class AgentProtocolTests: XCTestCase {
         XCTAssertEqual("pending".companionStatusLabel, "等待中")
     }
 
+    func testTaskListDefaultsToTwelveRecentThreads() {
+        XCTAssertEqual(AgentThreadListQuery().limit, 12)
+    }
+
+    @MainActor
+    func testAgentStoreLoadsOnlyTheFirstRecentThreadPage() async throws {
+        let fixture = try TemporaryCodexAppServer()
+        defer { fixture.remove() }
+        let installation = try await CodexExecutableDetector.probe(fixture.executableURL)
+        let runtime = CodexProcessActor(installation: installation, requestTimeout: .seconds(3))
+        let store = AgentStore(runtime: runtime)
+
+        await store.connect(threadQuery: AgentThreadListQuery(limit: 12, cwd: ["/tmp/project"]))
+
+        XCTAssertNil(store.lastError, store.lastError ?? "")
+        XCTAssertEqual(store.threads.map(\.id), ["thread-1"])
+        let trace = fixture.trace.replacingOccurrences(of: "\\/", with: "/")
+        XCTAssertEqual(trace.components(separatedBy: "thread/list").count - 1, 1)
+        XCTAssertTrue(trace.contains(#""limit":12"#))
+        await runtime.stop()
+    }
+
     func testExecutableDetectorAndFullJSONLContractAgainstFakeServer() async throws {
         let fixture = try TemporaryCodexAppServer()
         defer { fixture.remove() }
@@ -315,6 +337,10 @@ final class AgentProtocolTests: XCTestCase {
         let subagent = try XCTUnwrap(store.taskSubagents["thread-1"]?.first)
         XCTAssertEqual(subagent.threadID, "agent-1")
         XCTAssertEqual(subagent.status, "completed")
+
+        let initialActivityCount = store.taskActivities["thread-1"]?.count
+        await store.loadThreadHistory(id: "thread-1", force: true)
+        XCTAssertEqual(store.taskActivities["thread-1"]?.count, initialActivityCount)
 
         await store.loadThreadHistory(id: "agent-1")
         let loadedChild = try XCTUnwrap(store.threads.first { $0.id == "agent-1" })
@@ -641,7 +667,7 @@ for line in sys.stdin:
             "type": "chatgpt", "loginId": "login-1", "authUrl": "https://chatgpt.com/login"
         }})
     elif method == "thread/list":
-        assert params["limit"] == 25
+        assert params["limit"] in [12, 25]
         if params.get("cursor") == "next-page":
             emit({"id": request_id, "result": {"data": [], "nextCursor": None, "backwardsCursor": None}})
         else:

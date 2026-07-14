@@ -424,7 +424,7 @@ struct AgentThreadListQuery: Sendable, Equatable {
 
     init(
         cursor: String? = nil,
-        limit: Int? = 50,
+        limit: Int? = 12,
         archived: Bool? = false,
         cwd: [String]? = nil,
         searchTerm: String? = nil

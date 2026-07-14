@@ -114,19 +114,8 @@ final class AgentStore: ObservableObject {
 
     func reloadThreads(query: AgentThreadListQuery = AgentThreadListQuery()) async {
         do {
-            var request = query
-            var loaded: [AgentThread] = []
-            var loadedIDs = Set<String>()
-            var seenCursors = Set<String>()
-            while true {
-                let page = try await runtime.listThreads(request)
-                for thread in page.threads where loadedIDs.insert(thread.id).inserted {
-                    loaded.append(thread)
-                }
-                guard let nextCursor = page.nextCursor,
-                      seenCursors.insert(nextCursor).inserted else { break }
-                request.cursor = nextCursor
-            }
+            let page = try await runtime.listThreads(query)
+            let loaded = page.threads
             threads = loaded
             if selectedThreadID == nil || !loaded.contains(where: { $0.id == selectedThreadID }) {
                 selectedThreadID = loaded.first?.id
@@ -149,7 +138,10 @@ final class AgentStore: ObservableObject {
         historyLoadStates[id] = .loading
         do {
             let history = try await runtime.readThread(id: id, includeTurns: true)
-            apply(history)
+            let projection = await Task.detached(priority: .userInitiated) {
+                AgentThreadHistoryProjection.make(from: history)
+            }.value
+            apply(history, projection: projection)
             historyLoadStates[id] = .loaded
             lastError = nil
         } catch {
@@ -501,7 +493,10 @@ final class AgentStore: ObservableObject {
         }
     }
 
-    private func apply(_ history: AgentThreadHistory) {
+    private func apply(
+        _ history: AgentThreadHistory,
+        projection: AgentThreadHistoryProjection
+    ) {
         let threadID = history.thread.id
         upsert(history.thread)
 
@@ -513,10 +508,7 @@ final class AgentStore: ObservableObject {
             }
         }
 
-        let projection = AgentThreadHistoryProjection.make(from: history)
-        for activity in projection.activities {
-            upsertActivity(activity, threadID: threadID)
-        }
+        mergeActivities(projection.activities, threadID: threadID)
 
         let currentTurnIsRunning = activeTurns[threadID]?.status.isCompanionRunning == true
         if let message = projection.latestAgentMessage, !currentTurnIsRunning {
@@ -658,6 +650,17 @@ final class AgentStore: ObservableObject {
         taskActivities[threadID] = activities
     }
 
+    private func mergeActivities(_ incoming: [AgentTaskActivity], threadID: String) {
+        var activitiesByID = Dictionary(
+            (taskActivities[threadID] ?? []).map { ($0.id, $0) },
+            uniquingKeysWith: { _, replacement in replacement }
+        )
+        for activity in incoming {
+            activitiesByID[activity.id] = activity
+        }
+        taskActivities[threadID] = activitiesByID.values.sorted { $0.updatedAt < $1.updatedAt }
+    }
+
     private func automaticallyResolve(
         _ request: AgentApprovalRequest,
         mode: AgentTaskExecutionMode
@@ -714,7 +717,7 @@ final class AgentStore: ObservableObject {
     }
 }
 
-private struct AgentThreadHistoryProjection {
+private struct AgentThreadHistoryProjection: Sendable {
     let activities: [AgentTaskActivity]
     let latestAgentMessage: String?
     let latestCommandOutput: String?

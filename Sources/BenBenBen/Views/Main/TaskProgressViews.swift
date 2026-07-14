@@ -143,7 +143,7 @@ struct TaskProgressDetailCard: View {
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     if let pendingRequest {
                         TaskPendingRequestView(request: pendingRequest, store: store)
                     }
@@ -400,13 +400,14 @@ final class AgentTaskWindowController {
 
 private struct AgentTaskWindowView: View {
     @ObservedObject var agentContext: NotchAgentContext
+    @State private var visibleThreadID: String?
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 9) {
                 Label("任务", systemImage: "bubble.left.and.text.bubble.right.fill")
                     .font(.headline)
-                Text("左侧切换历史任务；语音只会继续当前选中的一个任务")
+                Text("左侧切换最近任务；语音只会继续当前选中的一个任务")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -419,35 +420,35 @@ private struct AgentTaskWindowView: View {
 
             if let store = agentContext.store {
                 HSplitView {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(sortedThreads(store)) { thread in
-                                Button {
-                                    store.selectedThreadID = thread.id
-                                } label: {
-                                    TaskHistoryRow(thread: thread, store: store)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .contentShape(.rect)
-                                }
-                                .buttonStyle(.plain)
-                                .background(
-                                    store.selectedThreadID == thread.id ? Color.accentColor : Color.clear,
-                                    in: .rect(cornerRadius: 7)
-                                )
-                                .accessibilityAddTraits(
-                                    store.selectedThreadID == thread.id ? .isSelected : []
-                                )
-                            }
+                    List(selection: $visibleThreadID) {
+                        ForEach(sortedThreads(store)) { thread in
+                            TaskHistoryRow(
+                                thread: thread,
+                                store: store,
+                                isSelected: visibleThreadID == thread.id
+                            )
+                            .tag(thread.id)
                         }
-                        .padding(6)
                     }
-                    .background(.regularMaterial)
+                    .listStyle(.sidebar)
                     .frame(minWidth: 210, idealWidth: 250, maxWidth: 310)
+                    .onAppear {
+                        visibleThreadID = store.selectedThreadID
+                    }
+                    .onChange(of: visibleThreadID) { _, threadID in
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard store.selectedThreadID != threadID else { return }
+                            store.selectedThreadID = threadID
+                        }
+                    }
+                    .onChange(of: store.selectedThreadID) { _, threadID in
+                        guard visibleThreadID != threadID else { return }
+                        visibleThreadID = threadID
+                    }
 
                     Group {
-                        if let threadID = store.selectedThreadID {
+                        if let threadID = visibleThreadID ?? store.selectedThreadID {
                             TaskProgressDetailCard(
                                 threadID: threadID,
                                 store: store,
@@ -504,6 +505,7 @@ private struct AgentTaskWindowView: View {
 private struct TaskHistoryRow: View {
     let thread: AgentThread
     @ObservedObject var store: AgentStore
+    let isSelected: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -537,8 +539,6 @@ private struct TaskHistoryRow: View {
     private var status: String {
         store.activeTurns[thread.id]?.status ?? thread.status ?? "idle"
     }
-
-    private var isSelected: Bool { store.selectedThreadID == thread.id }
 
     private var agentLabel: String {
         let name = thread.agentNickname ?? thread.agentRole
