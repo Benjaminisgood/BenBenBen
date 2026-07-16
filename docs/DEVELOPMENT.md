@@ -19,6 +19,7 @@ Runtime/                    CLI、MCP helper、shell 环境
 ProtocolSchemas/            当前 Codex schema 快照
 Resources/Mascot/           App 使用的龙图片
 Scripts/                    构建、打包、Runtime 和测试脚本
+Scripts/benshell/           合并后的 Shell 命令、bootstrap 与 zsh 配置
 ```
 
 ## 日常验证

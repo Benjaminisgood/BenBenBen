@@ -1,0 +1,393 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+DEEPTUTOR_HOME="${DEEPTUTOR_HOME:-/Users/ben/Desktop/DeepTutor}"
+DEEPTUTOR_PYTHON="${DEEPTUTOR_PYTHON:-$DEEPTUTOR_HOME/.venv/bin/python}"
+DEEPTUTOR_BIN="${DEEPTUTOR_BIN:-$DEEPTUTOR_HOME/.venv/bin/deeptutor}"
+RUN_DIR="${DEEPTUTOR_RUN_DIR:-/tmp/deeptutor-run}"
+SESSION="${DEEPTUTOR_SESSION:-deeptutor}"
+LOG_PATH="$RUN_DIR/deeptutor.log"
+PORTS=(8001 3782)
+SCRIPT_PATH="${0:A}"
+SCRIPT_DIR="${SCRIPT_PATH:h}"
+
+if [[ ! -f "$SCRIPT_PATH" ]]; then
+  SCRIPT_PATH="$(command -v -- "${0:t}" 2>/dev/null || true)"
+  SCRIPT_DIR="${SCRIPT_PATH:h}"
+fi
+
+source "$SCRIPT_DIR/lib/project-git.zsh"
+
+say() {
+  print -- "$*"
+}
+
+die() {
+  print -u2 -- "deeptutor: $*"
+  exit 1
+}
+
+screen_has_session() {
+  local session="$1"
+  local listing
+  listing="$(screen -ls 2>/dev/null || true)"
+  grep -q "[.]${session}[[:space:]]" <<< "$listing"
+}
+
+quit_session() {
+  local session="$1"
+  screen -S "$session" -X quit >/dev/null 2>&1 || true
+}
+
+settings_json() {
+  if [[ -x "$DEEPTUTOR_PYTHON" ]]; then
+    DEEPTUTOR_HOME="$DEEPTUTOR_HOME" "$DEEPTUTOR_PYTHON" - <<'PY' 2>/dev/null && return 0
+from pathlib import Path
+import json
+import os
+import sys
+
+root = Path(os.environ["DEEPTUTOR_HOME"])
+sys.path.insert(0, str(root))
+
+from deeptutor.services.config.launch_settings import load_launch_settings
+
+settings = load_launch_settings(root)
+print(json.dumps({
+    "backend": settings.backend_port,
+    "frontend": settings.frontend_port,
+    "language": settings.language,
+    "source": settings.source,
+}))
+PY
+  fi
+
+  print -- '{"backend":8001,"frontend":3782,"language":"en","source":"fallback"}'
+}
+
+setting_value() {
+  local key="$1"
+  settings_json | "$DEEPTUTOR_PYTHON" -c "import json,sys; print(json.load(sys.stdin)['$key'])" 2>/dev/null
+}
+
+refresh_ports() {
+  local json backend frontend
+  json="$(settings_json)"
+  backend="$(print -r -- "$json" | "$DEEPTUTOR_PYTHON" -c "import json,sys; print(json.load(sys.stdin)['backend'])" 2>/dev/null || print 8001)"
+  frontend="$(print -r -- "$json" | "$DEEPTUTOR_PYTHON" -c "import json,sys; print(json.load(sys.stdin)['frontend'])" 2>/dev/null || print 3782)"
+  PORTS=("$backend" "$frontend")
+}
+
+frontend_url() {
+  local port="${PORTS[2]:-3782}"
+  print -- "http://localhost:$port/"
+}
+
+backend_url() {
+  local port="${PORTS[1]:-8001}"
+  print -- "http://localhost:$port/"
+}
+
+frontend_probe_url() {
+  local port="${PORTS[2]:-3782}"
+  print -- "http://127.0.0.1:$port/"
+}
+
+backend_probe_url() {
+  local port="${PORTS[1]:-8001}"
+  print -- "http://127.0.0.1:$port/api/v1/auth/status"
+}
+
+preflight() {
+  [[ -d "$DEEPTUTOR_HOME" ]] || die "$DEEPTUTOR_HOME does not exist"
+  [[ -x "$DEEPTUTOR_PYTHON" ]] || die "$DEEPTUTOR_PYTHON not found. Run: deeptutor setup"
+  [[ -f "$DEEPTUTOR_HOME/scripts/start_web.py" ]] || die "scripts/start_web.py not found"
+  [[ -d "$DEEPTUTOR_HOME/web/node_modules" ]] || die "web/node_modules not found. Run: deeptutor setup"
+}
+
+resolve_npm() {
+  if [[ -x "$DEEPTUTOR_HOME/.tools/bin/npm" ]]; then
+    print -- "$DEEPTUTOR_HOME/.tools/bin/npm"
+    return 0
+  fi
+
+  if command -v npm >/dev/null 2>&1; then
+    command -v npm
+    return 0
+  fi
+
+  return 1
+}
+
+setup_python() {
+  if [[ -x "$DEEPTUTOR_PYTHON" ]]; then
+    say "python env ok: $DEEPTUTOR_PYTHON"
+    return 0
+  fi
+
+  local python_bin="${DEEPTUTOR_BOOTSTRAP_PYTHON:-}"
+  if [[ -z "$python_bin" ]]; then
+    if command -v python3.11 >/dev/null 2>&1; then
+      python_bin="$(command -v python3.11)"
+    elif command -v python3 >/dev/null 2>&1; then
+      python_bin="$(command -v python3)"
+    else
+      die "python3.11 or python3 not found"
+    fi
+  fi
+
+  say "creating DeepTutor venv with $python_bin"
+  (cd "$DEEPTUTOR_HOME" && "$python_bin" -m venv .venv)
+  (cd "$DEEPTUTOR_HOME" && .venv/bin/python -m pip install --upgrade pip setuptools wheel)
+  (cd "$DEEPTUTOR_HOME" && .venv/bin/python -m pip install -e ".[server]")
+}
+
+setup_web() {
+  if [[ -d "$DEEPTUTOR_HOME/web/node_modules" ]]; then
+    say "web deps ok: $DEEPTUTOR_HOME/web/node_modules"
+    return 0
+  fi
+
+  local npm_bin
+  npm_bin="$(resolve_npm)" || die "npm not found"
+  say "installing web deps with $npm_bin"
+  "$npm_bin" --prefix "$DEEPTUTOR_HOME/web" install
+}
+
+setup_all() {
+  [[ -d "$DEEPTUTOR_HOME" ]] || die "$DEEPTUTOR_HOME does not exist"
+  setup_python
+  setup_web
+  say "setup complete"
+}
+
+stop_recorded_processes() {
+  [[ -x "$DEEPTUTOR_PYTHON" ]] || return 0
+  [[ -f "$DEEPTUTOR_HOME/scripts/stop_web.py" ]] || return 0
+  (cd "$DEEPTUTOR_HOME" && "$DEEPTUTOR_PYTHON" scripts/stop_web.py) || true
+}
+
+kill_port_listeners() {
+  refresh_ports
+
+  local port pids
+  for port in $PORTS; do
+    pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "$pids" ]]; then
+      say "killing listener(s) on port $port: ${(j: :)${(f)pids}}"
+      print -r -- "$pids" | xargs kill 2>/dev/null || true
+    fi
+  done
+}
+
+run_foreground() {
+  mkdir -p "$RUN_DIR"
+  cd "$DEEPTUTOR_HOME"
+  exec "$DEEPTUTOR_PYTHON" scripts/start_web.py
+}
+
+run_backend_foreground() {
+  [[ -d "$DEEPTUTOR_HOME" ]] || die "$DEEPTUTOR_HOME does not exist"
+  [[ -x "$DEEPTUTOR_PYTHON" ]] || die "$DEEPTUTOR_PYTHON not found. Run: deeptutor setup"
+  cd "$DEEPTUTOR_HOME"
+  exec "$DEEPTUTOR_PYTHON" -m deeptutor.api.run_server "$@"
+}
+
+wait_for_url() {
+  local url="$1"
+  local -i attempts="${2:-180}"
+  local session="${3:-}"
+  local -i i
+
+  for (( i = 1; i <= attempts; i++ )); do
+    if [[ -n "$session" ]] && ! screen_has_session "$session"; then
+      return 2
+    fi
+    curl -fsS --max-time 1 "$url" >/dev/null 2>&1 && return 0
+    sleep 0.5
+  done
+
+  return 1
+}
+
+start_all() {
+  preflight
+  refresh_ports
+  mkdir -p "$RUN_DIR"
+  [[ -f "$SCRIPT_PATH" ]] || die "cannot resolve script path"
+
+  if screen_has_session "$SESSION"; then
+    say "$SESSION is already running"
+    status_all
+    return 0
+  fi
+
+  stop_recorded_processes >/dev/null 2>&1 || true
+
+  : > "$LOG_PATH"
+  screen -dmS "$SESSION" /bin/zsh "$SCRIPT_PATH" __run
+  say "started screen session: $SESSION"
+
+  local wait_status
+  if wait_for_url "$(backend_probe_url)" 140 "$SESSION"; then
+    say "backend ok: $(backend_url)"
+  else
+    wait_status=$?
+    if (( wait_status == 2 )); then
+      say "backend failed to start; check: deeptutor logs"
+      return 1
+    fi
+    say "backend is still starting; check: deeptutor logs"
+  fi
+
+  if wait_for_url "$(frontend_probe_url)" 240 "$SESSION"; then
+    say "frontend ok: $(frontend_url)"
+    if [[ "${DEEPTUTOR_FRONTEND_OPEN:-1}" == "1" ]] && command -v open >/dev/null 2>&1; then
+      open "$(frontend_url)" >/dev/null 2>&1 || true
+    fi
+  else
+    wait_status=$?
+    if (( wait_status == 2 )); then
+      say "frontend failed to start; check: deeptutor logs"
+      return 1
+    fi
+    say "frontend is still starting; check: deeptutor logs"
+  fi
+}
+
+stop_all() {
+  local kill_ports=0
+
+  if [[ "${1:-}" == "--ports" || "${1:-}" == "--force" ]]; then
+    kill_ports=1
+  fi
+
+  stop_recorded_processes
+  quit_session "$SESSION"
+
+  if (( kill_ports )); then
+    kill_port_listeners
+  fi
+
+  say "stopped DeepTutor"
+}
+
+status_all() {
+  refresh_ports
+
+  say "session:"
+  if screen_has_session "$SESSION"; then
+    say "  $SESSION: running"
+  else
+    say "  $SESSION: stopped"
+  fi
+
+  say ""
+  say "ports:"
+  local port pids
+  for port in $PORTS; do
+    pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "$pids" ]]; then
+      say "  $port: ${(j: :)${(f)pids}}"
+    else
+      say "  $port: free"
+    fi
+  done
+
+  say ""
+  if curl -fsS --max-time 2 "$(backend_probe_url)" >/dev/null 2>&1; then
+    say "backend: ok ($(backend_url))"
+  else
+    say "backend: unavailable ($(backend_url))"
+  fi
+
+  if curl -fsS --max-time 2 "$(frontend_probe_url)" >/dev/null 2>&1; then
+    say "frontend: $(frontend_url)"
+  else
+    say "frontend: unavailable ($(frontend_url))"
+  fi
+}
+
+logs_all() {
+  local follow=0
+  local arg
+
+  for arg in "$@"; do
+    case "$arg" in
+      -f|--follow) follow=1 ;;
+      *) die "unknown logs option: $arg" ;;
+    esac
+  done
+
+  local -a tail_args
+  tail_args=(-n 160)
+  (( follow )) && tail_args=(-n 160 -f)
+  tail "${tail_args[@]}" "$LOG_PATH"
+}
+
+open_frontend() {
+  refresh_ports
+  command -v open >/dev/null 2>&1 || die "macOS open command not found"
+  open "$(frontend_url)"
+}
+
+run_cli() {
+  [[ -d "$DEEPTUTOR_HOME" ]] || die "$DEEPTUTOR_HOME does not exist"
+  [[ -x "$DEEPTUTOR_BIN" ]] || die "$DEEPTUTOR_BIN not found. Run: deeptutor setup"
+  cd "$DEEPTUTOR_HOME"
+  exec "$DEEPTUTOR_BIN" "$@"
+}
+
+usage() {
+  cat <<'EOF'
+Usage: deeptutor <command>
+
+Commands:
+  setup             Install Python env and Web dependencies if missing
+  start             Start DeepTutor backend API and frontend in a screen session
+  stop [--ports]    Stop recorded DeepTutor processes and the screen session
+  restart           Stop with --ports, then start
+  status            Show session, ports, and health
+  logs [-f]         Show or follow the launcher log
+  open              Open the frontend URL
+  api               Start the backend API in the foreground
+  sync [remote]     Pull from and push committed changes to GitHub
+  pull [remote]     Pull remote commits with rebase/autostash
+  push [remote]     Push committed local history
+  git-status        Show local Git branch, remote, divergence, and changes
+  cli ...           Run the underlying deeptutor CLI from the project venv
+
+Environment:
+  DEEPTUTOR_HOME    Default: /Users/ben/Desktop/DeepTutor
+  DEEPTUTOR_RUN_DIR Default: /tmp/deeptutor-run
+  DEEPTUTOR_GIT_REMOTE Optional Git remote override for sync/pull/push
+EOF
+}
+
+command_name="${1:-help}"
+if (( $# > 0 )); then
+  shift
+fi
+
+case "$command_name" in
+  __run)
+    mkdir -p "$RUN_DIR"
+    exec >> "$LOG_PATH" 2>&1
+    run_foreground "$@"
+    ;;
+  setup) setup_all "$@" ;;
+  start) start_all "$@" ;;
+  stop) stop_all "$@" ;;
+  restart) stop_all --ports; start_all "$@" ;;
+  status) status_all "$@" ;;
+  logs) logs_all "$@" ;;
+  open) open_frontend "$@" ;;
+  api|backend) run_backend_foreground "$@" ;;
+  sync) project_git_sync "$DEEPTUTOR_HOME" "deeptutor" "${DEEPTUTOR_GIT_REMOTE:-}" "$@" ;;
+  pull) project_git_pull "$DEEPTUTOR_HOME" "deeptutor" "${DEEPTUTOR_GIT_REMOTE:-}" "$@" ;;
+  push) project_git_push "$DEEPTUTOR_HOME" "deeptutor" "${DEEPTUTOR_GIT_REMOTE:-}" "$@" ;;
+  git-status|gitstatus) project_git_show_status "$DEEPTUTOR_HOME" "deeptutor" "${DEEPTUTOR_GIT_REMOTE:-}" "$@" ;;
+  cli) run_cli "$@" ;;
+  help|-h|--help) usage ;;
+  *) run_cli "$command_name" "$@" ;;
+esac
