@@ -3,20 +3,25 @@ import XCTest
 @testable import BenBenBen
 
 final class WorkspacePathsTests: XCTestCase {
-    func testWorkspaceRootUsesCurrentHomeDirectory() {
+    func testWorkspaceRootDefaultsToKeyotiInCurrentHomeDirectory() {
         XCTAssertEqual(
-            WorkspacePaths.root.path,
+            WorkspacePaths.resolvedRoot(
+                storedPath: nil,
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+            ).path,
             FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("keyoti", isDirectory: true)
                 .path
         )
     }
 
-    func testLaunchdTemplateRoundTripsEscapedLabel() {
-        let label = "com.notchwow.test<&>"
+    func testWorkspaceRootAcceptsPersistedAbsoluteDirectory() {
         XCTAssertEqual(
-            LaunchdJobStore.extractLabel(from: LaunchdJobStore.plistTemplate(label: label)),
-            label
+            WorkspacePaths.resolvedRoot(
+                storedPath: "/tmp/Ben workspace",
+                homeDirectory: URL(fileURLWithPath: "/Users/test", isDirectory: true)
+            ).path,
+            "/tmp/Ben workspace"
         )
     }
 }

@@ -16,7 +16,7 @@ EXIT_APPROVAL_REQUIRED = 3
 PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
 APP_COMMANDS = {
     "status", "git-status", "gitstatus", "build", "run", "start", "verify",
-    "stop", "restart", "test", "test-logic", "logs", "telemetry", "debug",
+    "stop", "restart", "test", "logs", "telemetry", "debug",
     "package", "sync", "pull", "push",
 }
 REQUIRED_ACTION_FIELDS = {
@@ -85,10 +85,7 @@ def load_manifest(root: Path) -> Dict[str, Any]:
 
 
 def project_home() -> Path:
-    raw = os.environ.get("BENBENBEN_PROJECT_HOME")
-    if not raw:
-        legacy = os.environ.get("NOTCHWOW_HOME")
-        raw = legacy if legacy and legacy != "/Users/ben/Desktop/notchwow" else "/Users/ben/Desktop/BenBenBen"
+    raw = os.environ.get("BENBENBEN_PROJECT_HOME", "/Users/ben/Desktop/BenBenBen")
     return Path(raw).expanduser()
 
 
@@ -296,8 +293,6 @@ def command_tools(args: Sequence[str], root: Path) -> int:
             "BENBENBEN_RUNTIME_HOME": str(root),
             "BENSHELL_HOME": str(root / "Benshell"),
             "BENBENBEN_PROJECT_HOME": str(project_home()),
-            "NOTCHWOW_HOME": str(project_home()),
-            "NOTCHWOW_APP_NAME": environment.get("NOTCHWOW_APP_NAME", "BenBenBen"),
         })
         completed = subprocess.run(
             command_line,
@@ -332,8 +327,6 @@ def forward_app_command(args: Sequence[str], root: Path) -> int:
         "BENBENBEN_RUNTIME_HOME": str(root),
         "BENSHELL_HOME": str(root / "Benshell"),
         "BENBENBEN_PROJECT_HOME": str(project_home()),
-        "NOTCHWOW_HOME": str(project_home()),
-        "NOTCHWOW_APP_NAME": environment.get("NOTCHWOW_APP_NAME", "BenBenBen"),
     })
     return subprocess.call([str(controller)] + list(args), env=environment)
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env zsh
 set -euo pipefail
 
+NOTCHWOW_HOME="${NOTCHWOW_HOME:-/Users/ben/Desktop/notchwow}"
+NOTCHWOW_APP_NAME="${NOTCHWOW_APP_NAME:-notchwow}"
+NOTCHWOW_GIT_REMOTE="${NOTCHWOW_GIT_REMOTE:-origin}"
 SCRIPT_PATH="${0:A}"
 SCRIPT_DIR="${SCRIPT_PATH:h}"
 
@@ -8,10 +11,6 @@ if [[ ! -f "$SCRIPT_PATH" ]]; then
   SCRIPT_PATH="$(command -v -- "${0:t}" 2>/dev/null || true)"
   SCRIPT_DIR="${SCRIPT_PATH:h}"
 fi
-
-NOTCHWOW_HOME="${NOTCHWOW_HOME:-${SCRIPT_DIR:h:h:h}}"
-NOTCHWOW_APP_NAME="${NOTCHWOW_APP_NAME:-notchwow}"
-NOTCHWOW_GIT_REMOTE="${NOTCHWOW_GIT_REMOTE:-origin}"
 
 source "$SCRIPT_DIR/lib/project-git.zsh"
 
@@ -112,7 +111,7 @@ Commands:
   git-status        Show local Git branch, remote, divergence, and changes
 
 Environment:
-  NOTCHWOW_HOME       Default: parent notchwow checkout containing Scripts/benshell
+  NOTCHWOW_HOME       Default: /Users/ben/Desktop/notchwow
   NOTCHWOW_APP_NAME   Default: notchwow
   NOTCHWOW_GIT_REMOTE Git remote for sync/pull/push. Default: origin
 EOF

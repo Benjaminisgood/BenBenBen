@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "runtimeVersion": "1.0.0",
+  "runtimeVersion": "2.0.0",
   "mcpHelper": "bin/benbenben-mcp",
   "actions": [
     {
@@ -25,8 +25,8 @@
     },
     {
       "id": "benbenben.test",
-      "title": "BenBenBen logic tests",
-      "summary": "Run the repository logic smoke tests.",
+      "title": "BenBenBen tests",
+      "summary": "Run the current Swift package test suite.",
       "executable": "Benshell/scripts/benbenben-app",
       "arguments": ["test"],
       "cwd": "${BENBENBEN_PROJECT_HOME}",

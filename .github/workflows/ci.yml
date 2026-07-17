@@ -23,15 +23,13 @@ jobs:
       - name: Standard SwiftPM tests
         run: swift test
 
-      - name: Logic smoke tests
-        run: ./Scripts/test-logic.sh
-
       - name: Runtime tests
         run: ./Scripts/test-runtime.sh
 
       - name: Shell syntax
         run: |
-          bash -n script/build_and_run.sh Scripts/build_and_run.sh Scripts/copy-runtime.sh Scripts/embed-login-helper.sh Scripts/install-keyoti-agent-guide.sh Scripts/install-runtime.sh Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-logic.sh Scripts/test-runtime.sh
+          bash -n Scripts/build_and_run.sh Scripts/copy-runtime.sh Scripts/embed-login-helper.sh Scripts/install-keyoti-agent-guide.sh Scripts/install-runtime.sh Scripts/package-app.sh Scripts/notarize-app.sh Scripts/test-runtime.sh
+          find Scripts/benshell -type f ! -name Brewfile -exec /bin/zsh -n {} +
           /bin/zsh -n Runtime/install.zsh
           python -m py_compile Runtime/bin/benbenben Runtime/bin/benbenben-mcp Scripts/process-mascot-assets.py
 

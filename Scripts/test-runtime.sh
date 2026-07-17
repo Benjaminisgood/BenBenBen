@@ -9,8 +9,6 @@ export HOME="$TMP_DIR/home"
 mkdir -p "$HOME"
 cat > "$HOME/.zshrc" <<'EOF'
 export KEEP_ME="yes"
-export BENSHELL_HOME="/Users/ben/Desktop/Benshell"
-[[ -f "$BENSHELL_HOME/zsh/init.zsh" ]] && source "$BENSHELL_HOME/zsh/init.zsh"
 EOF
 
 APP_SUPPORT_HOME="$HOME/Library/Application Support/BenBenBen"
@@ -21,6 +19,7 @@ RUNTIME_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/Runtime/VERSION")"
 "$ROOT_DIR/Scripts/install-runtime.sh" install \
   --home "$APP_SUPPORT_HOME" \
   --zshrc "$HOME/.zshrc" >/dev/null
+export BENBENBEN_RUNTIME_HOME="$CURRENT"
 
 [[ -L "$CURRENT" ]]
 [[ "$(readlink "$CURRENT")" == "releases/$RUNTIME_VERSION" ]]
@@ -39,7 +38,6 @@ BACKUPS_AFTER="$(find "$HOME" -maxdepth 1 -name '.zshrc.benbenben-backup.*' | wc
 [[ "$BACKUPS_BEFORE" == "1" ]]
 [[ "$BACKUPS_AFTER" == "$BACKUPS_BEFORE" ]]
 [[ "$(grep -c '^# >>> BenBenBen Runtime >>>$' "$HOME/.zshrc")" == "1" ]]
-! grep -q '/Users/ben/Desktop/Benshell' "$HOME/.zshrc"
 grep -q 'export KEEP_ME="yes"' "$HOME/.zshrc"
 
 "$CURRENT/bin/benbenben" runtime status --json > "$TMP_DIR/runtime-status.json"

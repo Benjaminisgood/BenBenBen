@@ -108,14 +108,14 @@ tapcli() {
   taptap cli "$@"
 }
 
-nwhome() {
-  cd "${BENBENBEN_PROJECT_HOME:-${NOTCHWOW_HOME:-/Users/ben/Desktop/BenBenBen}}"
+benhome() {
+  cd "${BENBENBEN_PROJECT_HOME:-/Users/ben/Desktop/BenBenBen}"
 }
 
-nwtest() {
+bentest() {
   benbenben test "$@"
 }
 
-nwrun() {
+benrun() {
   benbenben run "$@"
 }

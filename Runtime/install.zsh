@@ -131,7 +131,6 @@ install_release() {
   local release_home="$RELEASES_HOME/$VERSION"
   local staging_home="$RELEASES_HOME/.${VERSION}.staging.$$"
   local next_link="$RUNTIME_HOME/.current.$$"
-  local legacy_backup
 
   if (( DRY_RUN )); then
     say "Would install: $SOURCE_ROOT"
@@ -152,9 +151,6 @@ install_release() {
       "$staging_home/bin/benbenben" \
       "$staging_home/bin/benbenben-mcp" \
       "$staging_home/bin/bbb" \
-      "$staging_home/bin/benshell" \
-      "$staging_home/bin/notchwow" \
-      "$staging_home/bin/nw" \
       "$staging_home/Benshell/scripts/"* \
       "$staging_home/Benshell/bootstrap/"*.sh
     /bin/mv "$staging_home" "$release_home"
@@ -163,11 +159,8 @@ install_release() {
   fi
 
   /bin/ln -s "releases/$VERSION" "$next_link"
-  if [[ -e "$CURRENT_LINK" && ! -L "$CURRENT_LINK" ]]; then
-    legacy_backup="$RUNTIME_HOME/current.pre-benbenben.$(/bin/date +%Y%m%d-%H%M%S)"
-    /bin/mv "$CURRENT_LINK" "$legacy_backup"
-    say "Preserved previous Runtime directory: $legacy_backup"
-  fi
+  [[ ! -e "$CURRENT_LINK" || -L "$CURRENT_LINK" ]] \
+    || die "current Runtime path must be a symbolic link: $CURRENT_LINK"
   /bin/mv -f "$next_link" "$CURRENT_LINK"
   trap - EXIT INT TERM
   say "Installed BenBenBen Runtime $VERSION"
@@ -211,10 +204,6 @@ for line in lines:
         managed = False
         continue
     if managed:
-        continue
-    if "/Users/ben/Desktop/Benshell" in line and ("BENSHELL_HOME" in line or "zsh/init.zsh" in line):
-        continue
-    if "BENSHELL_HOME/zsh/init.zsh" in line and "source" in line:
         continue
     kept.append(line)
 

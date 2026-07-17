@@ -3,8 +3,8 @@ import Foundation
 enum CodexProtocolBaseline {
     /// Stable schema generated with:
     /// `codex app-server generate-json-schema --out DIR`
-    /// on 2026-07-11. Experimental fields were intentionally excluded.
-    static let codexVersion = "0.142.4"
+    /// on 2026-07-12. Experimental fields were intentionally excluded.
+    static let codexVersion = "0.144.0-alpha.4"
     static let experimentalAPI = false
 }
 
@@ -64,6 +64,9 @@ struct AgentThread: Sendable, Equatable, Identifiable {
     let sessionID: String?
     let preview: String
     let name: String?
+    let parentThreadID: String?
+    let agentNickname: String?
+    let agentRole: String?
     let cwd: String?
     let modelProvider: String?
     let createdAt: Double?
@@ -79,6 +82,9 @@ struct AgentThread: Sendable, Equatable, Identifiable {
         sessionID = json["sessionId"]?.stringValue
         preview = json["preview"]?.stringValue ?? ""
         name = json["name"]?.stringValue
+        parentThreadID = json["parentThreadId"]?.stringValue
+        agentNickname = json["agentNickname"]?.stringValue
+        agentRole = json["agentRole"]?.stringValue
         cwd = json["cwd"]?.stringValue
         modelProvider = json["modelProvider"]?.stringValue
         createdAt = json["createdAt"]?.doubleValue
@@ -108,6 +114,181 @@ struct AgentTurn: Sendable, Equatable, Identifiable {
         status = json["status"]?.stringValue ?? "unknown"
         errorMessage = json["error"]?["message"]?.stringValue
         raw = json
+    }
+}
+
+struct AgentHistoryTurn: Sendable, Equatable, Identifiable {
+    let id: String
+    let status: String
+    let errorMessage: String?
+    let startedAt: Double?
+    let completedAt: Double?
+    let durationMilliseconds: Int64?
+    let items: [AgentJSON]
+    let raw: AgentJSON
+
+    init(json: AgentJSON) throws {
+        guard let id = json["id"]?.stringValue else {
+            throw CodexBridgeError.invalidResponse(method: "thread/read", detail: "missing turn.id")
+        }
+        self.id = id
+        status = json["status"]?.stringValue ?? "unknown"
+        errorMessage = json["error"]?["message"]?.stringValue
+        startedAt = json["startedAt"]?.doubleValue
+        completedAt = json["completedAt"]?.doubleValue
+        durationMilliseconds = json["durationMs"]?.integerValue
+        items = json["items"]?.arrayValue ?? []
+        raw = json
+    }
+}
+
+struct AgentThreadHistory: Sendable, Equatable {
+    let thread: AgentThread
+    let turns: [AgentHistoryTurn]
+
+    init(json: AgentJSON) throws {
+        thread = try AgentThread(json: json)
+        turns = try (json["turns"]?.arrayValue ?? []).map(AgentHistoryTurn.init(json:))
+    }
+}
+
+struct AgentSentTurn: Sendable, Equatable {
+    let threadID: String
+    let turn: AgentTurn
+}
+
+enum AgentTaskExecutionMode: String, CaseIterable, Identifiable, Sendable {
+    case askMe
+    case autoReview
+    case fullAccess
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .askMe: return "先问我"
+        case .autoReview: return "自动判断"
+        case .fullAccess: return "完全自动"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .askMe: return "风险动作由你确认"
+        case .autoReview: return "由 Codex 自动评估是否允许"
+        case .fullAccess: return "不询问并允许访问本机"
+        }
+    }
+
+    var approvalPolicy: String {
+        switch self {
+        case .askMe, .autoReview: return "on-request"
+        case .fullAccess: return "never"
+        }
+    }
+
+    var sandbox: String {
+        switch self {
+        case .askMe, .autoReview: return "workspace-write"
+        case .fullAccess: return "danger-full-access"
+        }
+    }
+
+    var approvalsReviewer: String {
+        switch self {
+        case .askMe, .fullAccess: return "user"
+        case .autoReview: return "auto_review"
+        }
+    }
+
+    static var persistedDefault: AgentTaskExecutionMode {
+        let raw = UserDefaults.standard.string(forKey: "benbenben.agent.executionMode")
+        return raw.flatMap(AgentTaskExecutionMode.init(rawValue:)) ?? .askMe
+    }
+}
+
+struct AgentTurnStartOptions: Sendable, Equatable {
+    var approvalPolicy: String?
+    var sandboxPolicy: AgentJSON?
+    var approvalsReviewer: String?
+
+    init(executionMode: AgentTaskExecutionMode? = nil) {
+        approvalPolicy = executionMode?.approvalPolicy
+        switch executionMode {
+        case .askMe, .autoReview:
+            sandboxPolicy = .object(["type": .string("workspaceWrite")])
+        case .fullAccess:
+            sandboxPolicy = .object(["type": .string("dangerFullAccess")])
+        case nil:
+            sandboxPolicy = nil
+        }
+        approvalsReviewer = executionMode?.approvalsReviewer
+    }
+}
+
+struct AgentPlanStep: Sendable, Equatable, Identifiable {
+    let id: String
+    let step: String
+    let status: String
+}
+
+enum AgentTaskActivityKind: String, Sendable, Equatable {
+    case lifecycle
+    case agent
+    case command
+    case fileChange
+    case tool
+    case reasoning
+    case message
+    case approval
+    case guidance
+}
+
+struct AgentTaskActivity: Sendable, Equatable, Identifiable {
+    let id: String
+    let kind: AgentTaskActivityKind
+    let title: String
+    let detail: String?
+    let status: String
+    let updatedAt: Date
+}
+
+enum AgentHistoryLoadState: Sendable, Equatable {
+    case loading
+    case loaded
+    case failed(String)
+}
+
+struct AgentSubagent: Sendable, Equatable, Identifiable {
+    let threadID: String
+    let parentThreadID: String
+    var path: String?
+    var nickname: String?
+    var role: String?
+    var status: String
+    var prompt: String?
+    var message: String?
+
+    var id: String { threadID }
+
+    var displayName: String {
+        if let nickname, !nickname.isEmpty { return nickname }
+        if let role, !role.isEmpty { return role }
+        if let path, !path.isEmpty { return path }
+        return "Agent \(threadID.prefix(6))"
+    }
+}
+
+extension String {
+    var isCompanionRunning: Bool {
+        let value = lowercased()
+        return value.contains("progress") || value == "running" || value == "started" || value == "active"
+    }
+
+    var isAgentTerminal: Bool {
+        let value = lowercased()
+        return ["completed", "success", "failed", "error", "errored", "shutdown", "interrupted", "cancelled"]
+            .contains(value)
     }
 }
 
@@ -151,8 +332,6 @@ enum AgentApprovalKind: String, Sendable, Equatable {
     case permissions
     case userInput
     case mcpElicitation
-    case legacyCommand
-    case legacyFileChange
 }
 
 struct AgentApprovalRequest: Sendable, Equatable, Identifiable {
@@ -166,6 +345,40 @@ struct AgentApprovalRequest: Sendable, Equatable, Identifiable {
     let command: String?
     let cwd: String?
     let rawParams: AgentJSON
+
+    var userInputQuestions: [AgentUserInputQuestion] {
+        guard kind == .userInput else { return [] }
+        return rawParams["questions"]?.arrayValue?.compactMap(AgentUserInputQuestion.init(json:)) ?? []
+    }
+}
+
+struct AgentUserInputQuestion: Sendable, Equatable, Identifiable {
+    struct Option: Sendable, Equatable, Identifiable {
+        let label: String
+        let description: String
+
+        var id: String { label }
+    }
+
+    let id: String
+    let header: String
+    let question: String
+    let options: [Option]
+
+    init?(json: AgentJSON) {
+        guard let id = json["id"]?.stringValue,
+              let question = json["question"]?.stringValue else { return nil }
+        self.id = id
+        header = json["header"]?.stringValue ?? "需要你的选择"
+        self.question = question
+        options = json["options"]?.arrayValue?.compactMap { value in
+            guard let label = value["label"]?.stringValue else { return nil }
+            return Option(
+                label: label,
+                description: value["description"]?.stringValue ?? ""
+            )
+        } ?? []
+    }
 }
 
 enum AgentApprovalResponse: Sendable, Equatable {
@@ -185,6 +398,8 @@ enum AgentEvent: Sendable, Equatable {
     case commandOutputDelta(context: AgentEventContext, delta: String)
     case fileChangeOutputDelta(context: AgentEventContext, delta: String)
     case diffUpdated(context: AgentEventContext, diff: String)
+    case planUpdated(threadID: String, turnID: String, steps: [AgentPlanStep], explanation: String?)
+    case taskActivityUpdated(threadID: String, turnID: String, activity: AgentTaskActivity)
     case tokenUsageUpdated(threadID: String, turnID: String, usage: AgentTokenUsage)
     case turnStarted(threadID: String, turn: AgentTurn)
     case turnCompleted(threadID: String, turn: AgentTurn)
@@ -209,7 +424,7 @@ struct AgentThreadListQuery: Sendable, Equatable {
 
     init(
         cursor: String? = nil,
-        limit: Int? = 50,
+        limit: Int? = 12,
         archived: Bool? = false,
         cwd: [String]? = nil,
         searchTerm: String? = nil
@@ -249,14 +464,26 @@ struct AgentThreadStartOptions: Sendable, Equatable {
         ephemeral: Bool = false,
         approvalPolicy: String = "on-request",
         sandbox: String = "workspace-write",
-        approvalsReviewer: String = "user"
+        approvalsReviewer: String = "user",
+        executionMode: AgentTaskExecutionMode? = nil
     ) {
         self.cwd = cwd
         self.model = model
         self.ephemeral = ephemeral
-        self.approvalPolicy = approvalPolicy
-        self.sandbox = sandbox
-        self.approvalsReviewer = approvalsReviewer
+        self.approvalPolicy = executionMode?.approvalPolicy ?? approvalPolicy
+        self.sandbox = executionMode?.sandbox ?? sandbox
+        self.approvalsReviewer = executionMode?.approvalsReviewer ?? approvalsReviewer
+    }
+
+    var executionMode: AgentTaskExecutionMode {
+        if approvalPolicy == AgentTaskExecutionMode.fullAccess.approvalPolicy,
+           sandbox == AgentTaskExecutionMode.fullAccess.sandbox {
+            return .fullAccess
+        }
+        if approvalsReviewer == AgentTaskExecutionMode.autoReview.approvalsReviewer {
+            return .autoReview
+        }
+        return .askMe
     }
 
     var json: AgentJSON {
@@ -316,5 +543,10 @@ enum CodexBridgeError: Error, Sendable, LocalizedError {
         case let .unsupportedApproval(method, response):
             "Approval response \(response) is not valid for \(method)."
         }
+    }
+
+    var isMissingThread: Bool {
+        guard case let .server(code, message, _) = self else { return false }
+        return code == -32_600 && message.localizedCaseInsensitiveContains("thread not found")
     }
 }

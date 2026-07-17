@@ -14,6 +14,7 @@ actor CodexProcessActor: AgentRuntime {
 
     private let clientInfo: CodexClientInfo
     private let requestTimeout: Duration
+    private let appServerConfigOverrides: [String]
     private let events: AsyncStream<AgentEvent>
     private let eventContinuation: AsyncStream<AgentEvent>.Continuation
     private let encoder = JSONEncoder()
@@ -36,11 +37,13 @@ actor CodexProcessActor: AgentRuntime {
     init(
         installation: CodexInstallation,
         clientInfo: CodexClientInfo = CodexClientInfo(),
-        requestTimeout: Duration = .seconds(30)
+        requestTimeout: Duration = .seconds(30),
+        appServerConfigOverrides: [String] = []
     ) {
         self.installation = installation
         self.clientInfo = clientInfo
         self.requestTimeout = requestTimeout
+        self.appServerConfigOverrides = appServerConfigOverrides
         let stream = AsyncStream<AgentEvent>.makeStream(bufferingPolicy: .bufferingNewest(1_024))
         events = stream.stream
         eventContinuation = stream.continuation
@@ -68,7 +71,8 @@ actor CodexProcessActor: AgentRuntime {
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         child.executableURL = installation.executableURL
-        child.arguments = ["app-server", "--stdio"]
+        child.arguments = appServerConfigOverrides.flatMap { ["-c", $0] }
+            + ["app-server", "--stdio"]
         child.standardInput = stdinPipe
         child.standardOutput = stdoutPipe
         child.standardError = stderrPipe
@@ -232,6 +236,20 @@ actor CodexProcessActor: AgentRuntime {
         )
     }
 
+    func readThread(id: String, includeTurns: Bool = true) async throws -> AgentThreadHistory {
+        let result = try await sendRequest(
+            method: "thread/read",
+            params: .object([
+                "threadId": .string(id),
+                "includeTurns": .bool(includeTurns)
+            ])
+        )
+        guard let thread = result["thread"] else {
+            throw CodexBridgeError.invalidResponse(method: "thread/read", detail: "missing thread")
+        }
+        return try AgentThreadHistory(json: thread)
+    }
+
     func startThread(_ options: AgentThreadStartOptions) async throws -> AgentThread {
         let result = try await sendRequest(method: "thread/start", params: options.json)
         guard let thread = result["thread"] else {
@@ -257,20 +275,39 @@ actor CodexProcessActor: AgentRuntime {
         )
     }
 
-    func startTurn(threadID: String, text: String) async throws -> AgentTurn {
-        let result = try await sendRequest(
-            method: "turn/start",
-            params: .object([
-                "threadId": .string(threadID),
-                "input": .array([
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(text),
-                        "text_elements": .array([])
-                    ])
-                ])
+    func startTurn(
+        threadID: String,
+        text: String,
+        localImagePath: String? = nil,
+        options: AgentTurnStartOptions = AgentTurnStartOptions()
+    ) async throws -> AgentTurn {
+        var input: [AgentJSON] = [
+            .object([
+                "type": .string("text"),
+                "text": .string(text),
+                "text_elements": .array([])
             ])
-        )
+        ]
+        if let localImagePath {
+            input.append(.object([
+                "type": .string("localImage"),
+                "path": .string(localImagePath)
+            ]))
+        }
+        var params: [String: AgentJSON] = [
+            "threadId": .string(threadID),
+            "input": .array(input)
+        ]
+        if let approvalPolicy = options.approvalPolicy {
+            params["approvalPolicy"] = .string(approvalPolicy)
+        }
+        if let sandboxPolicy = options.sandboxPolicy {
+            params["sandboxPolicy"] = sandboxPolicy
+        }
+        if let approvalsReviewer = options.approvalsReviewer {
+            params["approvalsReviewer"] = .string(approvalsReviewer)
+        }
+        let result = try await sendRequest(method: "turn/start", params: .object(params))
         guard let turn = result["turn"] else {
             throw CodexBridgeError.invalidResponse(method: "turn/start", detail: "missing turn")
         }
@@ -434,8 +471,6 @@ actor CodexProcessActor: AgentRuntime {
         case "item/permissions/requestApproval": kind = .permissions
         case "item/tool/requestUserInput": kind = .userInput
         case "mcpServer/elicitation/request": kind = .mcpElicitation
-        case "execCommandApproval": kind = .legacyCommand
-        case "applyPatchApproval": kind = .legacyFileChange
         default: kind = nil
         }
 
@@ -493,6 +528,66 @@ actor CodexProcessActor: AgentRuntime {
                 return
             }
             eventContinuation.yield(.diffUpdated(context: context, diff: diff))
+        case "turn/plan/updated":
+            guard let threadID = params["threadId"]?.stringValue,
+                  let turnID = params["turnId"]?.stringValue,
+                  let plan = params["plan"]?.arrayValue else {
+                eventContinuation.yield(.unknownMessage(method: method, raw: raw))
+                return
+            }
+            let steps = plan.enumerated().compactMap { index, value -> AgentPlanStep? in
+                guard let step = value["step"]?.stringValue else { return nil }
+                return AgentPlanStep(
+                    id: "\(turnID):plan:\(index)",
+                    step: step,
+                    status: value["status"]?.stringValue ?? "pending"
+                )
+            }
+            eventContinuation.yield(
+                .planUpdated(
+                    threadID: threadID,
+                    turnID: turnID,
+                    steps: steps,
+                    explanation: params["explanation"]?.stringValue
+                )
+            )
+        case "item/started", "item/completed":
+            guard let threadID = params["threadId"]?.stringValue,
+                  let turnID = params["turnId"]?.stringValue,
+                  let item = params["item"],
+                  let activity = Self.taskActivity(
+                    from: item,
+                    lifecycleStatus: method == "item/started" ? "inProgress" : "completed",
+                    timestampMilliseconds: params[method == "item/started" ? "startedAtMs" : "completedAtMs"]?.integerValue
+                  ) else {
+                eventContinuation.yield(.unknownMessage(method: method, raw: raw))
+                return
+            }
+            eventContinuation.yield(
+                .taskActivityUpdated(threadID: threadID, turnID: turnID, activity: activity)
+            )
+        case "item/mcpToolCall/progress":
+            guard let threadID = params["threadId"]?.stringValue,
+                  let turnID = params["turnId"]?.stringValue,
+                  let itemID = params["itemId"]?.stringValue,
+                  let message = params["message"]?.stringValue else {
+                eventContinuation.yield(.unknownMessage(method: method, raw: raw))
+                return
+            }
+            eventContinuation.yield(
+                .taskActivityUpdated(
+                    threadID: threadID,
+                    turnID: turnID,
+                    activity: AgentTaskActivity(
+                        id: itemID,
+                        kind: .tool,
+                        title: "工具正在处理",
+                        detail: message,
+                        status: "inProgress",
+                        updatedAt: Date()
+                    )
+                )
+            )
         case "thread/tokenUsage/updated":
             guard let threadID = params["threadId"]?.stringValue,
                   let turnID = params["turnId"]?.stringValue,
@@ -565,6 +660,66 @@ actor CodexProcessActor: AgentRuntime {
 
     private enum TextDeltaKind { case agent, command, fileChange }
 
+    private nonisolated static func taskActivity(
+        from item: AgentJSON,
+        lifecycleStatus: String,
+        timestampMilliseconds: Int64?
+    ) -> AgentTaskActivity? {
+        guard let id = item["id"]?.stringValue,
+              let type = item["type"]?.stringValue else { return nil }
+
+        let kind: AgentTaskActivityKind
+        let title: String
+        let detail: String?
+        switch type {
+        case "commandExecution":
+            kind = .command
+            title = lifecycleStatus == "completed" ? "命令执行完成" : "正在运行命令"
+            detail = item["command"]?.stringValue
+        case "fileChange":
+            kind = .fileChange
+            title = lifecycleStatus == "completed" ? "文件修改完成" : "正在修改文件"
+            let paths = item["changes"]?.arrayValue?.compactMap {
+                $0["path"]?.stringValue ?? $0["filePath"]?.stringValue
+            } ?? []
+            detail = paths.isEmpty ? nil : paths.joined(separator: "、")
+        case "mcpToolCall", "dynamicToolCall":
+            kind = .tool
+            let server = item["server"]?.stringValue
+            let tool = item["tool"]?.stringValue ?? "工具"
+            title = lifecycleStatus == "completed" ? "工具调用完成" : "正在调用工具"
+            detail = [server, tool].compactMap { $0 }.joined(separator: " · ")
+        case "reasoning":
+            kind = .reasoning
+            title = lifecycleStatus == "completed" ? "分析完成" : "正在分析"
+            detail = item["summary"]?.arrayValue?.compactMap(\.stringValue).joined(separator: "\n")
+        case "agentMessage":
+            kind = .message
+            title = lifecycleStatus == "completed" ? "回复已生成" : "正在组织回复"
+            detail = item["text"]?.stringValue
+        case "plan":
+            kind = .reasoning
+            title = "更新执行计划"
+            detail = item["text"]?.stringValue
+        default:
+            kind = .lifecycle
+            title = lifecycleStatus == "completed" ? "\(type) 已完成" : "正在处理 \(type)"
+            detail = nil
+        }
+
+        let timestamp = timestampMilliseconds.map {
+            Date(timeIntervalSince1970: TimeInterval($0) / 1_000)
+        } ?? Date()
+        return AgentTaskActivity(
+            id: id,
+            kind: kind,
+            title: title,
+            detail: detail,
+            status: item["status"]?.stringValue ?? lifecycleStatus,
+            updatedAt: timestamp
+        )
+    }
+
     private func yieldTextDelta(_ kind: TextDeltaKind, params: AgentJSON, raw: AgentJSON) {
         guard let context = context(from: params), let delta = params["delta"]?.stringValue else {
             eventContinuation.yield(.unknownMessage(method: nil, raw: raw))
@@ -612,17 +767,6 @@ actor CodexProcessActor: AgentRuntime {
             case .acceptForSession: decision = "acceptForSession"
             case .decline: decision = "decline"
             case .cancel: decision = "cancel"
-            default: throw unsupportedApproval(request, response)
-            }
-            return .object(["decision": .string(decision)])
-
-        case .legacyCommand, .legacyFileChange:
-            let decision: String
-            switch response {
-            case .accept: decision = "approved"
-            case .acceptForSession: decision = "approved_for_session"
-            case .decline: decision = "denied"
-            case .cancel: decision = "abort"
             default: throw unsupportedApproval(request, response)
             }
             return .object(["decision": .string(decision)])

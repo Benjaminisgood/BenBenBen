@@ -37,15 +37,5 @@ fi
 export TAPTAP_CONDA_ENV="${TAPTAP_CONDA_ENV:-taptap}"
 export TAPTAP_PYTHON="${TAPTAP_PYTHON:-/Users/ben/miniforge3/envs/$TAPTAP_CONDA_ENV/bin/python}"
 
-if [[ -z "${BENBENBEN_PROJECT_HOME:-}" ]]; then
-  if [[ -n "${NOTCHWOW_HOME:-}" && "$NOTCHWOW_HOME" != "/Users/ben/Desktop/notchwow" ]]; then
-    export BENBENBEN_PROJECT_HOME="$NOTCHWOW_HOME"
-  else
-    export BENBENBEN_PROJECT_HOME="/Users/ben/Desktop/BenBenBen"
-  fi
-fi
-export BENBENBEN_APP_NAME="${BENBENBEN_APP_NAME:-${NOTCHWOW_APP_NAME:-BenBenBen}}"
-
-# Legacy environment names remain readable by older scripts.
-export NOTCHWOW_HOME="${NOTCHWOW_HOME:-$BENBENBEN_PROJECT_HOME}"
-export NOTCHWOW_APP_NAME="${NOTCHWOW_APP_NAME:-$BENBENBEN_APP_NAME}"
+export BENBENBEN_PROJECT_HOME="${BENBENBEN_PROJECT_HOME:-/Users/ben/Desktop/BenBenBen}"
+export BENBENBEN_APP_NAME="${BENBENBEN_APP_NAME:-BenBenBen}"
